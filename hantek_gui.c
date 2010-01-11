@@ -36,8 +36,7 @@ static gfloat OFFSET_CH1, OFFSET_CH2, OFFSET_T;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 
-static unsigned int trigger_point;
-
+unsigned int trigger_point = 0;
 
 static int p[2];	// dso_thread => gui update mechanism pipe
 
@@ -702,8 +701,99 @@ position_t_cb(GtkAdjustment *adj)
 
 }
 
+static GtkWindow *
+create_control_window()
+{
+	GtkWindow *w = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+
+	GtkWidget *box2 = gtk_hbox_new (FALSE, 10);
+	GtkWidget *settings_box= gtk_vbox_new(FALSE, 10);
+
+   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
+   gtk_window_set_title (GTK_WINDOW (window), APPNAME);
+   gtk_container_add (GTK_CONTAINER (window), box2);
+
+	// buffer size
+	set_bsize = gtk_combo_box_new_text();
+	int j;
+	for(j = 0; j < SCALAR(str_buffer_sizes); j++)
+		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_bsize), j, str_buffer_sizes[j]);
+
+	gtk_combo_box_set_active(GTK_COMBO_BOX(set_bsize), 0);
+	gtk_box_pack_start (GTK_BOX (settings_box), set_bsize, TRUE, TRUE, 0);
+
+	g_signal_connect (G_OBJECT (set_bsize), "changed", G_CALLBACK (buffer_size_cb), 0);
+
+	// sampling rate
+	set_srate = gtk_combo_box_new_text();
+	for(j = 0; j < SCALAR(str_sampling_rates); j++)
+		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_srate), j, str_sampling_rates[j]);
+
+	gtk_combo_box_set_active(GTK_COMBO_BOX(set_srate), 0);
+	gtk_box_pack_start (GTK_BOX (settings_box), set_srate, TRUE, TRUE, 0);
+
+	g_signal_connect (G_OBJECT (set_srate), "changed", G_CALLBACK (sampling_rate_cb), 0);
+
+	// time per window
+	time_per_window = gtk_label_new("time/window");
+	gtk_box_pack_start(GTK_BOX(settings_box), time_per_window, TRUE, TRUE, 0);
+
+	// trigger frame: slope, source
+	GtkWidget *trigger_frame = gtk_frame_new ("Trigger");
+	GtkWidget *trigger_vbox = gtk_vbox_new (FALSE, 10);
+	gtk_container_add (GTK_CONTAINER(trigger_frame), trigger_vbox);
+
+	GtkWidget *slope = gtk_combo_box_new_text();
+	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 0, "Slope +");
+	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 1, "Slope -");
+	gtk_combo_box_set_active(GTK_COMBO_BOX(slope), trigger_slope);
+	g_signal_connect (G_OBJECT(slope), "changed", G_CALLBACK (trigger_slope_cb), 0);
+	gtk_box_pack_start(GTK_BOX(trigger_vbox), slope, TRUE, TRUE, 0);
+
+	GtkWidget *tsource = gtk_combo_box_new_text();
+	char *str_tsources[] = {"ch1", "ch2", "alt", "ext", "ext/10"};
+	for(int i = 0; i < SCALAR(str_tsources); i++)
+		gtk_combo_box_insert_text(GTK_COMBO_BOX(tsource), i, str_tsources[i]);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(tsource), trigger_source);
+	g_signal_connect (G_OBJECT(tsource), "changed", G_CALLBACK(trigger_source_cb), 0);
+	gtk_box_pack_start(GTK_BOX(trigger_vbox), tsource, TRUE, TRUE, 0);
+
+	gtk_box_pack_start(GTK_BOX(settings_box), trigger_frame, TRUE, TRUE, 0);
+	
+   GtkWidget *control_box = gtk_vbox_new(FALSE, 10);
+
+ //  gtk_container_set_border_width (GTK_CONTAINER (box2), 10);
+	gtk_widget_show_all(w);
+
+	GtkWidget *ch1_box = create_channel_box("Channel 1", 0, box);
+	GtkWidget *ch2_box = create_channel_box("Channel 2", 1, box);
+
+   gtk_box_pack_start (GTK_BOX (box2), ch1_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX (box2), ch2_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
+
+   run_button = gtk_toggle_button_new_with_label ("Run");
+   g_signal_connect_swapped (GTK_OBJECT (run_button), "toggled",
+			     G_CALLBACK (run_clicked),
+			     GTK_OBJECT (box));
+   gtk_box_pack_start (GTK_BOX (control_box), run_button, TRUE, TRUE, 0);
+
+   GtkWidget *log_button = gtk_check_button_new_with_label("log");
+   g_signal_connect_swapped (GTK_OBJECT (log_button), "toggled",
+			     G_CALLBACK (log_clicked),
+			     GTK_OBJECT (box));
+   gtk_box_pack_start (GTK_BOX(control_box), log_button, TRUE, TRUE, 0);
+
+   GTK_WIDGET_SET_FLAGS (run_button, GTK_CAN_DEFAULT);
+   gtk_widget_grab_default (run_button);
+
+
+	return w;
+}
+
 static void
-create_grid (void)
+create_grid()
 {
    GtkWidget *box1;
    GtkWidget *box2;
@@ -867,84 +957,7 @@ create_grid (void)
    separator = gtk_hseparator_new ();
    gtk_box_pack_start (GTK_BOX (box1), separator, FALSE, TRUE, 0);
 
-   box2 = gtk_hbox_new (FALSE, 10);
-   GtkWidget *settings_box= gtk_vbox_new(FALSE, 10);
-
-	// buffer size
-	set_bsize = gtk_combo_box_new_text();
-	int j;
-	for(j = 0; j < SCALAR(str_buffer_sizes); j++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_bsize), j, str_buffer_sizes[j]);
-
-	gtk_combo_box_set_active(GTK_COMBO_BOX(set_bsize), 0);
-	gtk_box_pack_start (GTK_BOX (settings_box), set_bsize, TRUE, TRUE, 0);
-
-	g_signal_connect (G_OBJECT (set_bsize), "changed", G_CALLBACK (buffer_size_cb), 0);
-
-	// sampling rate
-	set_srate = gtk_combo_box_new_text();
-	for(j = 0; j < SCALAR(str_sampling_rates); j++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_srate), j, str_sampling_rates[j]);
-
-	gtk_combo_box_set_active(GTK_COMBO_BOX(set_srate), 0);
-	gtk_box_pack_start (GTK_BOX (settings_box), set_srate, TRUE, TRUE, 0);
-
-	g_signal_connect (G_OBJECT (set_srate), "changed", G_CALLBACK (sampling_rate_cb), 0);
-
-	// time per window
-	time_per_window = gtk_label_new("time/window");
-	gtk_box_pack_start(GTK_BOX(settings_box), time_per_window, TRUE, TRUE, 0);
-
-	// trigger frame: slope, source
-	GtkWidget *trigger_frame = gtk_frame_new ("Trigger");
-	GtkWidget *trigger_vbox = gtk_vbox_new (FALSE, 10);
-	gtk_container_add (GTK_CONTAINER(trigger_frame), trigger_vbox);
-
-	GtkWidget *slope = gtk_combo_box_new_text();
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 0, "Slope +");
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 1, "Slope -");
-	gtk_combo_box_set_active(GTK_COMBO_BOX(slope), trigger_slope);
-	g_signal_connect (G_OBJECT(slope), "changed", G_CALLBACK (trigger_slope_cb), 0);
-	gtk_box_pack_start(GTK_BOX(trigger_vbox), slope, TRUE, TRUE, 0);
-
-	GtkWidget *tsource = gtk_combo_box_new_text();
-	char *str_tsources[] = {"ch1", "ch2", "alt", "ext", "ext/10"};
-	for(int i = 0; i < SCALAR(str_tsources); i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(tsource), i, str_tsources[i]);
-	gtk_combo_box_set_active(GTK_COMBO_BOX(tsource), trigger_source);
-	g_signal_connect (G_OBJECT(tsource), "changed", G_CALLBACK(trigger_source_cb), 0);
-	gtk_box_pack_start(GTK_BOX(trigger_vbox), tsource, TRUE, TRUE, 0);
-
-	gtk_box_pack_start(GTK_BOX(settings_box), trigger_frame, TRUE, TRUE, 0);
-	
-   GtkWidget *control_box = gtk_vbox_new(FALSE, 10);
-
-   gtk_container_set_border_width (GTK_CONTAINER (box2), 10);
-   gtk_box_pack_end (GTK_BOX (box1), box2, FALSE, TRUE, 0);
-
-	GtkWidget *ch1_box = create_channel_box("Channel 1", 0, box);
-	GtkWidget *ch2_box = create_channel_box("Channel 2", 1, box);
-
-   gtk_box_pack_start (GTK_BOX (box2), ch1_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX (box2), ch2_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
-
-   run_button = gtk_toggle_button_new_with_label ("Run");
-   g_signal_connect_swapped (GTK_OBJECT (run_button), "toggled",
-			     G_CALLBACK (run_clicked),
-			     GTK_OBJECT (box));
-   gtk_box_pack_start (GTK_BOX (control_box), run_button, TRUE, TRUE, 0);
-
-   GtkWidget *log_button = gtk_check_button_new_with_label("log");
-   g_signal_connect_swapped (GTK_OBJECT (log_button), "toggled",
-			     G_CALLBACK (log_clicked),
-			     GTK_OBJECT (box));
-   gtk_box_pack_start (GTK_BOX(control_box), log_button, TRUE, TRUE, 0);
-
-   GTK_WIDGET_SET_FLAGS (run_button, GTK_CAN_DEFAULT);
-   gtk_widget_grab_default (run_button);
-
+   create_control_window();
    gtk_widget_show_all (window);
    gdk_window_set_cursor (box->window, gdk_cursor_new (GDK_CROSS));
 }
