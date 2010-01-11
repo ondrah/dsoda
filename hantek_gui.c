@@ -1,3 +1,4 @@
+// TODO: gtk_table_new
 #define _XOPEN_SOURCE
 #define _POSIX_SOURCE
 
@@ -7,10 +8,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
-#include <gtkdatabox.h>
-#include <gtkdatabox_lines.h>
-#include <gtkdatabox_grid.h>
-#include <gtkdatabox_cross_simple.h>
 
 #include <stdio.h>
 
@@ -72,97 +69,9 @@ static int nr_attenuations[] = { 1, 10 };
 static int buffer_size_idx = 0, sampling_rate_idx = 0;
 unsigned int period_usec = 10000;
 
-static GtkWidget *window = NULL;	//!< Main window.
-static GtkWidget **entries;
-//static GtkDatabox *box;
+static GtkWidget *display_area;
 static GtkWidget *box;
 static GtkWidget *time_per_window, *set_srate, *set_bsize, *run_button;
-
-unsigned int nr_points = 0;		//!< number of samples in the graph
-gfloat *X, *Y, *I;
-GtkDataboxGraph *graph_ch1, *graph_ch2;
-//gfloat MX = 0, MY = 0;
-
-static gint
-show_motion_notify_cb (GtkWidget ** entries, GdkEventMotion * event
-		       /*, GtkWidget *widget */ )
-{
-   gfloat x, y;
-   gchar *text;
-
-   x = gtk_databox_pixel_to_value_x (GTK_DATABOX(box), event->x);
-   y = gtk_databox_pixel_to_value_y (GTK_DATABOX(box), event->y);
-
-   text = g_strdup_printf ("%g", x);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_ACTUAL_X]), text);
-   g_free ((gpointer) text);
-   text = g_strdup_printf ("%g", y);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_ACTUAL_Y]), text);
-   g_free ((gpointer) text);
-
-   return FALSE;
-}
-
-static gint
-show_button_press_cb (GtkDatabox * box, GdkEventButton * event,
-		      GtkWidget ** entries)
-{
-   gfloat x, y;
-   gchar *text;
-
-   if (!(event->button == 1 || event->button == 2))
-      return FALSE;
-
-   x = gtk_databox_pixel_to_value_x (box, event->x);
-   y = gtk_databox_pixel_to_value_y (box, event->y);
-
-   text = g_strdup_printf ("%g", x);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_MARKED_X]), text);
-   g_free ((gpointer) text);
-   text = g_strdup_printf ("%g", y);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_MARKED_Y]), text);
-   g_free ((gpointer) text);
-
-   return FALSE;
-}
-
-static void
-show_changed_cb (GtkDatabox * box,
-		 GtkDataboxValueRectangle * selectionValues,
-		 GtkWidget ** entries)
-{
-   gchar *text;
-
-   text = g_strdup_printf ("%g", selectionValues->x2 - selectionValues->x1);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_DELTA_X]), text);
-   g_free ((gpointer) text);
-   text = g_strdup_printf ("%g", selectionValues->y2 - selectionValues->y1);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_DELTA_Y]), text);
-   g_free ((gpointer) text);
-
-   text = g_strdup_printf ("%g", selectionValues->x2);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_ACTUAL_X]), text);
-   g_free ((gpointer) text);
-   text = g_strdup_printf ("%g", selectionValues->y2);
-   gtk_entry_set_text (GTK_ENTRY (entries[SHOW_ACTUAL_Y]), text);
-   g_free ((gpointer) text);
-}
-
-static GtkWidget *
-show_entry (GtkWidget * hbox, gchar * text)
-{
-   GtkWidget *frame;
-   GtkWidget *entry;
-
-   frame = gtk_frame_new (text);
-   gtk_container_add (GTK_CONTAINER (hbox), frame);
-   entry = gtk_entry_new ();
-   gtk_widget_set_size_request (entry, 20, -1);
-   gtk_editable_set_editable (GTK_EDITABLE (entry), FALSE);
-   gtk_container_add (GTK_CONTAINER (frame), entry);
-
-   return entry;
-}
 
 static void
 run_clicked()
@@ -179,15 +88,11 @@ run_clicked()
 		//dso_set_filter(reject_hf);
 
 		dso_thread_resume();
-		gtk_databox_set_enable_zoom(GTK_DATABOX(box), 0);
-		gtk_databox_set_enable_selection(GTK_DATABOX(box), 0);
 		fl_running = 1;	// start updating the screen
 	} else {
 		DMSG("stopping capture\n");
 		dso_thread_pause();
 		gtk_button_set_label(GTK_BUTTON(run_button), "Run");
-		gtk_databox_set_enable_zoom(GTK_DATABOX(box), 1);
-		gtk_databox_set_enable_selection(GTK_DATABOX(box), 1);
 		fl_running = 0;
 	}
 }
@@ -375,102 +280,26 @@ static void clear_graph_cb();
 //	return nr_time_steps[sampling_rate_idx];
 //}
 //
+
 static
 void load_file(char *fname)
 {
-	float time_step = //get_time_step ();
-	1000000/nr_sampling_rates[sampling_rate_idx];
-	DMSG("loading file with time step %g\n", time_step);
-
-	if(nr_points)
-		clear_graph_cb();
-
-   FILE *f;
-   f=fopen(fname,"r");
-
-   struct stat st;
-   fstat(fileno(f), &st);
-   int my_lines = st.st_size / 16;	// estimate number of lines
-   
-   I = g_new0 (gfloat, my_lines);
-   X = g_new0 (gfloat, my_lines);
-   Y = g_new0 (gfloat, my_lines);
-
-   float a = 0,b = 0;
-   DMSG("loading data...\n");
-   int k = 0;
-   while(fscanf(f,"%f %f", &a, &b) != EOF) {
-	   //printf("got %f ; %f\n", a, b);
-	   I[k] = time_step * k;		// TODO: overtake the time (sampling freq.) constant
-	   X[k] = a;
-	   Y[k] = b;
-	   k++;
-	   if(k > my_lines) {	// oops, buffer too small
-		   my_lines += 0x10000;
-		   I = g_realloc(I, sizeof(I[0]) * my_lines);
-		   X = g_realloc(X, sizeof(X[0]) * my_lines);
-		   Y = g_realloc(Y, sizeof(Y[0]) * my_lines);
-	   }
-	   a = 0;
-	   b = 0;
-   }
-
-   fclose(f);
-	DMSG("done, %d lines processed\n", k);
-
-	nr_points = k;
-
-   GdkColor color;
-
-   color.red = 0;
-   color.green = 65535;
-   color.blue = 0;
-
-   graph_ch1 = gtk_databox_lines_new (nr_points, I, X, &color, 1);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph_ch1);
-
-   //g_free(X);
-
-   color.red = 65535;
-   color.green = 0;
-   color.blue = 0;
-
-   graph_ch2 = gtk_databox_lines_new (nr_points, I, Y, &color, 1);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph_ch2);
-
-  // g_free(Y);
-  // g_free(I);
-
-   //gtk_databox_auto_rescale (GTK_DATABOX (box), 0.10);
-   //gtk_databox_set_total_limits(GTK_DATABOX(box), 0,time_step * k,256/32, 0);
-   //gtk_databox_set_visible_limits(GTK_DATABOX(box), 0,time_step * k / 5,256/32,0);
-   gtk_databox_set_total_limits(GTK_DATABOX(box), 0,time_step * k,256, 0);
-   gtk_databox_set_visible_limits(GTK_DATABOX(box), 0,time_step * k / 5,256,0);
 }
 
 static
-int find_trigger(unsigned triggerPoint)
+unsigned int find_trigger(unsigned int triggerPoint)
 {
-/*    unsigned tp1 = triggerPoint;
-    unsigned tp2 = 1;
-    while(tp1 > 0) {
-        tp1 >>= 1;
-        tp2 <<= 1;
-    }*/
-
-    //unsigned var_1 = tp2;// - 1;
-    unsigned var_1 = 1;// - 1;
+    unsigned int var_1 = 1;
 	while(var_1 < triggerPoint)
 		var_1 <<= 1;
-    unsigned var_2 = 0;
-
-    unsigned var_C = 0;
-    unsigned var_10 = 0;
+    unsigned int var_2 = 0;
+    unsigned int var_C = 0;
+    unsigned int var_10 = 0;
 
     int flag = 1;
     while (var_1 > var_2 + 1) {
         var_C = ((var_1 - var_2 + 1) >> 1) + var_10;
-		unsigned m = (var_1 + var_2)>>1;
+		unsigned int m = (var_1 + var_2)>>1;
         if((var_C > triggerPoint) == flag)	{
             if(!flag) {
                 var_10 = var_C;
@@ -512,46 +341,7 @@ gint update_gui_cb()
 	pthread_mutex_unlock(&buffer_mutex);
 
 	trigger_point = find_trigger(trigger_point);
-
-	if(trigger_point < 1024 || trigger_point > nr_points - 1024)
-		return;
-
-	// ooo
-//	if(trigger_point < 512)
-//		return;
-
-	float time_step = //get_time_step ();
-	1000000/nr_sampling_rates[sampling_rate_idx];
-
-	//DMSG("repainting, %d points, timestep %f...\n", my_buffer_size, time_step);
-
-	//if(nr_points)
-	//	clear_graph_cb();
-   
-	for(int k = 0; k < my_buffer_size; k++) {
-	   I[k] = (k - (int)trigger_point) * time_step;
-	   Y[k] = my_buffer[k * 2];		// ch2
-	   X[k] = my_buffer[k * 2 + 1];	// ch1
-	}
-
-	nr_points = my_buffer_size;
-
-  // g_free(Y);
-  // g_free(I);
-
-	//MX = trigger_point * time_step;
-
-	//gtk_databox_set_total_limits(GTK_DATABOX(box), 0, time_step * nr_points,  256 / 32, 0);
-	//gtk_databox_set_visible_limits(GTK_DATABOX(box), 0, time_step * nr_points, 256 / 32, 0);
-
-	//gtk_databox_set_total_limits(GTK_DATABOX(box), 0, time_step * nr_points,  0, 256);
-
-//	if(trigger_point < 1024 || trigger_point > nr_points - 1024)
-//		return;
-
-	//gtk_databox_set_total_limits(GTK_DATABOX(box), -trigger_point * time_step, time_step * (nr_points - trigger_point), 0, 256);
-	gtk_databox_set_total_limits(GTK_DATABOX(box), -0xffff * time_step, time_step * nr_points, 0, 256);
-	gtk_databox_set_visible_limits(GTK_DATABOX(box), -5000 * time_step, 5000 * time_step, 0, 256);
+	display_refresh(display_area);
 
 	return RETVAL;
 #undef RETVAL
@@ -564,30 +354,6 @@ void dso_update_gui()
 	//g_idle_add_full(G_PRIORITY_HIGH_IDLE + 20, update_gui_cb, 0, 0);
 	char c = 'x';
 	write(p[1], &c, 1);
-}
-
-static
-void clear_graph_cb()
-{
-	if(!nr_points)
-		return;		// no graph present
-
-	gtk_databox_graph_remove(GTK_DATABOX(box),graph_ch1);
-	gtk_databox_graph_remove(GTK_DATABOX(box),graph_ch2);
-	// FIXME: release graph_ch1 and graph_ch2 here
-	//gtk_object_destroy(GTK_OBJECT(graph_ch1));
-	//gtk_object_destroy(GTK_OBJECT(graph_ch2));
-	graph_ch1 = 0;
-	graph_ch2 = 0;
-	nr_points = 0;
-	g_free(I);
-	g_free(X);
-	g_free(Y);
-	I = X = Y = 0;
-
-   gtk_databox_set_total_limits(GTK_DATABOX(box), 0,10,-5,5);
-   gtk_databox_set_visible_limits(GTK_DATABOX(box), 0,3,-5,5);
-	//gtk_databox_auto_rescale(GTK_DATABOX(box), 0.05);	// force repaint
 }
 
 static
@@ -619,13 +385,12 @@ void load_file_cb()
 static void
 create_menu(GtkWidget *parent)
 {
-
     GtkWidget *file_submenu = gtk_menu_new();
 	GtkWidget *open_item = gtk_menu_item_new_with_label ("Open");
 	g_signal_connect_swapped (open_item, "activate", G_CALLBACK (load_file_cb), 0);
 	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), open_item);
 	GtkWidget *clear_item = gtk_menu_item_new_with_label ("Clear");
-	g_signal_connect_swapped (clear_item, "activate", G_CALLBACK (clear_graph_cb), 0);
+	//g_signal_connect_swapped (clear_item, "activate", G_CALLBACK (clear_graph_cb), 0);
 	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), clear_item);
 	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), gtk_separator_menu_item_new ());
 	GtkWidget *quit_item = gtk_menu_item_new_with_label ("Quit");
@@ -658,14 +423,13 @@ create_menu(GtkWidget *parent)
 }
 
 static void
-scale_set_value(GtkScale *scale)
+scale_configure(GtkScale *scale)
 {
 	gtk_range_set_update_policy (GTK_RANGE (scale), GTK_UPDATE_CONTINUOUS);
     gtk_scale_set_digits (scale, 0);
-    gtk_scale_set_value_pos (scale, GTK_POS_TOP);
-    gtk_scale_set_draw_value (scale, TRUE);
+    //gtk_scale_configure_pos (scale, GTK_POS_TOP);
+    gtk_scale_set_draw_value (scale, FALSE);
 }
-
 
 static void
 offset_ch1_cb(GtkAdjustment *adj)
@@ -698,7 +462,11 @@ offset_t_cb(GtkAdjustment *adj)
 static void
 position_t_cb(GtkAdjustment *adj)
 {
-
+	int nval = adj->value;
+	DMSG("trigger position adjusted, 0x%x\n", nval);
+	//offset_t = nval;
+	//update_offset();
+	DMSG("WRITEME!\n");
 }
 
 static GtkWindow *
@@ -706,12 +474,14 @@ create_control_window()
 {
 	GtkWindow *w = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 
-	GtkWidget *box2 = gtk_hbox_new (FALSE, 10);
+	GtkWidget *box2 = gtk_vbox_new(FALSE, 10);
+	gtk_container_add (GTK_CONTAINER(w), box2);
+
 	GtkWidget *settings_box= gtk_vbox_new(FALSE, 10);
 
-   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-   gtk_window_set_title (GTK_WINDOW (window), APPNAME);
-   gtk_container_add (GTK_CONTAINER (window), box2);
+	gtk_window_set_position(GTK_WINDOW(w), GTK_WIN_POS_CENTER);
+	gtk_window_set_title (GTK_WINDOW(w), APPNAME);
+	gtk_container_add (GTK_CONTAINER(w), box2);
 
 	// buffer size
 	set_bsize = gtk_combo_box_new_text();
@@ -763,13 +533,13 @@ create_control_window()
    GtkWidget *control_box = gtk_vbox_new(FALSE, 10);
 
  //  gtk_container_set_border_width (GTK_CONTAINER (box2), 10);
-	gtk_widget_show_all(w);
-
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 5);
 	GtkWidget *ch1_box = create_channel_box("Channel 1", 0, box);
 	GtkWidget *ch2_box = create_channel_box("Channel 2", 1, box);
 
-   gtk_box_pack_start (GTK_BOX (box2), ch1_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX (box2), ch2_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX(hbox), ch1_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX(hbox), ch2_box, TRUE, TRUE, 0);
+   gtk_box_pack_start (GTK_BOX(box2), hbox, TRUE, TRUE, 0);
    gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
    gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
 
@@ -787,6 +557,7 @@ create_control_window()
 
    GTK_WIDGET_SET_FLAGS (run_button, GTK_CAN_DEFAULT);
    gtk_widget_grab_default (run_button);
+	gtk_widget_show_all(w);
 
 
 	return w;
@@ -799,11 +570,8 @@ create_grid()
    GtkWidget *box2;
    GtkWidget *label;
    GtkWidget *table;
-   GtkWidget *separator;
-   GtkDataboxGraph *graph;
-   GdkColor color;
 
-   window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+   GtkWindow *window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 
    GdkPixbuf *icon_pixbuf = gdk_pixbuf_new_from_file("hantek-icon.png", 0);
    gtk_window_set_icon(GTK_WINDOW(window), icon_pixbuf);
@@ -822,144 +590,41 @@ create_grid()
 
    create_menu(box1);
 
-   label = gtk_label_new("HantekGTK");
-   gtk_box_pack_start (GTK_BOX (box1), label, FALSE, FALSE, 0);
-   separator = gtk_hseparator_new ();
-   gtk_box_pack_start (GTK_BOX (box1), separator, FALSE, FALSE, 0);
+   gtk_box_pack_start (GTK_BOX (box1), gtk_hseparator_new (), FALSE, FALSE, 0);
 
 // channel levels, trigger level
-	GtkObject *lev_ch1 = gtk_adjustment_new(offset_ch1, 0.0, 0xff, 1.0, 0x10, 0x30);
-	GtkObject *lev_ch2 = gtk_adjustment_new(offset_ch2, 0.0, 0xff, 1.0, 0x10, 0x30);
-	GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 0xff, 1.0, 0x10, 0x30);
-	GtkObject *pos_t = gtk_adjustment_new(offset_t, 0.0, 0xff, 1.0, 0x10, 0x30);
+	GtkObject *lev_ch1 = gtk_adjustment_new(offset_ch1, 0.0, 0xff, 0, 0, 0);
+	GtkObject *lev_ch2 = gtk_adjustment_new(offset_ch2, 0.0, 0xff, 0, 0, 0);
+	GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 0xff, 0, 0, 0);
+	GtkObject *pos_t = gtk_adjustment_new(0x80, 0.0, 0xff, 0, 0, 0);
     GtkWidget *scale_ch1 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch1));
     GtkWidget *scale_ch2 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch2));
     GtkWidget *scale_t = gtk_vscale_new(GTK_ADJUSTMENT(lev_t));
     GtkWidget *position_t = gtk_hscale_new(GTK_ADJUSTMENT(pos_t));
-    scale_set_value(GTK_SCALE(scale_ch1));
-    scale_set_value(GTK_SCALE(scale_ch2));
-    scale_set_value(GTK_SCALE(scale_t));
+    scale_configure(GTK_SCALE(scale_ch1));
+    scale_configure(GTK_SCALE(scale_ch2));
+    scale_configure(GTK_SCALE(scale_t));
+	scale_configure(GTK_SCALE(position_t));
 	g_signal_connect(G_OBJECT(lev_ch1), "value_changed", G_CALLBACK(offset_ch1_cb), 0);
 	g_signal_connect(G_OBJECT(lev_ch2), "value_changed", G_CALLBACK(offset_ch2_cb), 0);
 	g_signal_connect(G_OBJECT(lev_t), "value_changed", G_CALLBACK(offset_t_cb), 0);
 	g_signal_connect(G_OBJECT(lev_t), "value_changed", G_CALLBACK(position_t_cb), 0);
 
-   /* Create a GtkDatabox widget along with scrollbars and rulers */
-   gtk_databox_create_box_with_scrollbars_and_rulers(&box, &table, TRUE, TRUE, TRUE, TRUE);
+	display_area = display_create_widget();
 
-   /* Here we start with the first grid */
-   color.red = 0;
-   color.green = 0;
-   color.blue = 65535;
+	// scale + graph table (display panel)
+	GtkWidget *dp = gtk_hbox_new(FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(dp), scale_ch1, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(dp), scale_ch2, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(dp), display_area, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(dp), scale_t, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(box1), position_t, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(box1), dp, TRUE, TRUE, 0);
 
-// add the grid
-//	float time_step = //get_time_step ();
-//	1000000/nr_sampling_rates[sampling_rate_idx];
-	graph = gtk_databox_grid_new(10, 32, &color, 1);
-	gtk_databox_graph_add(GTK_DATABOX (box), graph);
+	create_control_window();
+	gtk_widget_show_all(window);
 
-   color.red = 32768;
-   color.green = 32768;
-   color.blue = 32768;
-
-	nr_points = 10240;//my_buffer_size;
-
-   I = g_new0 (gfloat, nr_points);
-   X = g_new0 (gfloat, nr_points);
-   Y = g_new0 (gfloat, nr_points);
-
-	for(int i = 0; i < nr_points; i++) {
-		I[i] = X[i] = Y[i] = 0;
-	}
-
-   color.red = 0;
-   color.green = 65535;
-   color.blue = 0;
-
-   graph_ch1 = gtk_databox_lines_new (nr_points, I, X, &color, 1);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph_ch1);
-
-   //g_free(X);
-
-   color.red = 65535;
-   color.green = 65535;
-   color.blue = 0;
-
-   graph_ch2 = gtk_databox_lines_new (nr_points, I, Y, &color, 1);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph_ch2);
-//   graph = gtk_databox_cross_simple_new (&color, 0);                                            
-//   gtk_databox_graph_add (GTK_DATABOX (box), graph);
-
-//   graph = gtk_databox_markers_new (1, &MX, &MY, &color, 15, GTK_DATABOX_MARKERS_TRIANGLE);
-//   gtk_databox_graph_add (GTK_DATABOX (box), graph);
-//   GtkDataboxMarkers *markers = GTK_DATABOX_MARKERS (graph);
-//   gtk_databox_markers_set_position (markers, 0, GTK_DATABOX_MARKERS_W);
-//   gtk_databox_markers_set_label (markers, 0, GTK_DATABOX_MARKERS_TEXT_W, "trigger", TRUE);
-
-	GtkDataboxMarkers *markers;
-	static gfloat FLOAT_ZERO = 0;
-/*
-   graph = gtk_databox_markers_new (1, &FLOAT_ZERO, &OFFSET_CH1, &color, 1, GTK_DATABOX_MARKERS_DASHED_LINE);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph);
-   markers = GTK_DATABOX_MARKERS (graph);
-   gtk_databox_markers_set_position (markers, 0, GTK_DATABOX_MARKERS_W);
-   gtk_databox_markers_set_label (markers, 0, GTK_DATABOX_MARKERS_TEXT_N, "channel 1", TRUE);
-
-   graph = gtk_databox_markers_new (1, &FLOAT_ZERO, &OFFSET_CH2, &color, 1, GTK_DATABOX_MARKERS_DASHED_LINE);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph);
-   markers = GTK_DATABOX_MARKERS (graph);
-   gtk_databox_markers_set_position (markers, 0, GTK_DATABOX_MARKERS_W);
-   gtk_databox_markers_set_label (markers, 0, GTK_DATABOX_MARKERS_TEXT_N, "channel 2", TRUE);*/
-
-   color.red = 0x8080;
-   color.green = 0x8080;
-   color.blue = 0x8080;
-	// trigger line
-   graph = gtk_databox_markers_new (1, &FLOAT_ZERO, &OFFSET_T, &color, 1, GTK_DATABOX_MARKERS_DASHED_LINE);
-   gtk_databox_graph_add (GTK_DATABOX (box), graph);
-   markers = GTK_DATABOX_MARKERS (graph);
-   gtk_databox_markers_set_position (markers, 0, GTK_DATABOX_MARKERS_W);
-   //gtk_databox_markers_set_label (markers, 0, GTK_DATABOX_MARKERS_TEXT_N, "trigger", TRUE);
-
-
-   GtkWidget *hbox = gtk_hbox_new (TRUE, 3);
-   gtk_box_pack_start (GTK_BOX (box1), hbox, FALSE, TRUE, 0);
-
-   entries = g_new0 (GtkWidget *, SHOW_NUM_ENTRIES);
-   entries[SHOW_ACTUAL_X] = show_entry (hbox, "Actual X");
-   entries[SHOW_ACTUAL_Y] = show_entry (hbox, "Actual Y");
-   entries[SHOW_MARKED_X] = show_entry (hbox, "Marked X");
-   entries[SHOW_MARKED_Y] = show_entry (hbox, "Marked Y");
-   entries[SHOW_DELTA_X] = show_entry (hbox, "Delta X");
-   entries[SHOW_DELTA_Y] = show_entry (hbox, "Delta Y");
-
-   g_signal_connect_swapped (G_OBJECT (box), "motion_notify_event",
-			     G_CALLBACK (show_motion_notify_cb), entries);
-   g_signal_connect (G_OBJECT (box), "button_press_event",
-		     G_CALLBACK (show_button_press_cb), entries);
-   g_signal_connect (G_OBJECT (box), "selection-changed",
-		     G_CALLBACK (show_changed_cb), entries);
-
-   // scale + graph table (display panel)
-   GtkWidget *dp = gtk_hbox_new(FALSE, 0);
-   gtk_box_pack_start(GTK_BOX(dp), scale_ch1, FALSE, FALSE, 0);
-   gtk_box_pack_start(GTK_BOX(dp), scale_ch2, FALSE, FALSE, 0);
-   gtk_box_pack_start(GTK_BOX(dp), table, TRUE, TRUE, 0);
-   gtk_box_pack_start(GTK_BOX(dp), scale_t, FALSE, FALSE, 0);
-   gtk_box_pack_start(GTK_BOX(box1), position_t, TRUE, TRUE, 0);
-   gtk_box_pack_start(GTK_BOX(box1), dp, TRUE, TRUE, 0);
-
-   color.red = 0;
-   color.green = 0;
-   color.blue = 0;
-   gtk_widget_modify_bg (box, GTK_STATE_NORMAL, &color);
-
-   separator = gtk_hseparator_new ();
-   gtk_box_pack_start (GTK_BOX (box1), separator, FALSE, TRUE, 0);
-
-   create_control_window();
-   gtk_widget_show_all (window);
-   gdk_window_set_cursor (box->window, gdk_cursor_new (GDK_CROSS));
+	gdk_window_set_cursor(display_area->window, gdk_cursor_new(GDK_CROSS));
 }
 
 int calData = -3;
@@ -968,7 +633,8 @@ int calData = -3;
 gint
 main (gint argc, char *argv[])
 {
-	gtk_init (&argc, &argv);
+	gtk_init(&argc, &argv);
+	display_init(&argc, &argv);
 
 	pipe(p);
 	GIOChannel *channel = g_io_channel_unix_new(p[0]);
