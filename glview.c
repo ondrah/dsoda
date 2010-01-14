@@ -5,7 +5,8 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
-#include "hantek_io.h"
+#include "io.h"
+#include "local.h"
 
 static GdkGLConfig *glconfig;
 int gl_channels, gl_grid;
@@ -72,17 +73,6 @@ void update_screen()
     //glScalef(0.10, 0.10, 10);
 
     glLineWidth(2);
-	unsigned samplesInBuffer = 1000;
-	unsigned samplesInScale = 1000;
-	unsigned samplesInvisible = samplesInBuffer - samplesInScale;
-	unsigned viewLen = (unsigned)(samplesInScale/timeDiv);
-	unsigned restLen = samplesInScale - viewLen;
-
-	//unsigned samplesToTransform = aThread->transformSize;
-	unsigned samplesToTransform = 1000;
-	unsigned transformedSamples = samplesToTransform/2;
-	unsigned transformViewLen = (unsigned)(transformedSamples/timeDiv);
-	unsigned transformRestLen = transformedSamples - transformViewLen;
 
 //	if(!fl_gui_running) {
 //		glClear(GL_COLOR_BUFFER_BIT);
@@ -93,31 +83,30 @@ void update_screen()
 
 	while((int)trigger_point > (int)my_buffer_size) {
 		trigger_point -= my_buffer_size;
-		g_printf("tp=%d\n", trigger_point);
+	//	DMSG("tp=%d\n", trigger_point);
 	}
 
 	//printf("mbs=%d\n", my_buffer_size);
 	for (int t = 0 ; t < MAX_CHANNELS; t++) {
-		//if (chActive[t])
-		{
-			glNewList(gl_channels + t, GL_COMPILE);
-			glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
-			if(!t) {
-				glColor4f(0.0f, 1.0f, 0.0f, 0.5);
-			} else {
-				glColor4f(1.0f, 1.0f, 0.0f, 0.5);
-			}
+		if(!capture_ch[t])
+			continue;
 
-			//for (int i = 0; i < my_buffer_size; i++) {
-			for (int i = trigger_point; i < my_buffer_size; i++) {
-				glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
-			}
-			for (int i = 0; i < trigger_point; i++) {
-				glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
-			}
-			glEnd();
-			glEndList();
+		glNewList(gl_channels + t, GL_COMPILE);
+		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
+		if(!t) {
+			glColor4f(0.0f, 1.0f, 0.0f, 0.5);
+		} else {
+			glColor4f(1.0f, 1.0f, 0.0f, 0.5);
 		}
+
+		for (int i = trigger_point; i < my_buffer_size; i++) {
+			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
+		}
+		for (int i = 0; i < trigger_point; i++) {
+			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
+		}
+		glEnd();
+		glEndList();
 	}
 
 				/*
@@ -335,10 +324,8 @@ void GLBox::setTimeShift(double shift)
 static void
 realize (GtkWidget *widget, gpointer   data)
 {
-	g_printf("realize\n");
+	//DMSG("realize\n");
 	gl_init();
-	//gl_resize(640,480);
-
 }
 
 static gboolean
@@ -351,9 +338,11 @@ configure_event (GtkWidget         *widget, GdkEventConfigure *event, gpointer  
   /*** OpenGL BEGIN ***/
   if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
     return FALSE;
-
-  glViewport (0, 0, widget->allocation.width, widget->allocation.height);
-  gl_resize(widget->allocation.width, widget->allocation.height);
+  int w = widget->allocation.width;
+  int h = widget->allocation.height;
+  DMSG("w %d h %d\n", w, h);
+  glViewport (0, 0, w, h);
+  gl_resize(w, h);
 
   gdk_gl_drawable_gl_end (gldrawable);
   /*** OpenGL END ***/
@@ -397,17 +386,13 @@ void display_refresh(GtkWidget *da)
 //	return TRUE;
 //}
 
-int display_init(int argv, char **argc)
+int display_init(int *pargc, char ***pargv)
 {
   gint major, minor;
 
-  GtkWidget *vbox;
-  GtkWidget *button;
-  GtkWidget *window;
-
-  gtk_gl_init (&argc, &argv);
-  gdk_gl_query_version (&major, &minor);
-  g_print ("\nOpenGL extension version - %d.%d\n", major, minor);
+  gtk_gl_init(pargc, pargv);
+  gdk_gl_query_version(&major, &minor);
+  g_print("OpenGL extension %d.%d\n", major, minor);
 
   /* Try double-buffered visual */
   glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB    |
@@ -455,4 +440,5 @@ GtkWidget *display_create_widget()
 
 void display_done()
 {
+	gl_done();
 }

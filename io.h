@@ -142,6 +142,7 @@ extern unsigned int dso_buffer_size;
 extern int dso_buffer_dirty;
 extern unsigned int dso_trigger_point;
 extern int fl_gui_running;
+extern int capture_ch[2];
 
 int dso_get_capture_state();
 int dso_capture_start();
@@ -162,5 +163,6 @@ int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset);
 int dso_get_capture_state(int *tp);
 
 extern pthread_mutex_t buffer_mutex;
+extern volatile unsigned int dso_period_usec;
 
 #endif

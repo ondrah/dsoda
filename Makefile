@@ -5,10 +5,14 @@ LDFLAGS=`pkg-config gtk+-2.0 --libs` -lgtkdatabox `pkg-config gtkglext-1.0 --lib
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
 all: $(OBJS)
-	gcc $(OBJS) -o hantek $(LDFLAGS) -lusb -lpthread
+	gcc $(OBJS) -o dsoda $(LDFLAGS) -lusb -lpthread
 
 .PHONY: dep
 dep:
 	$(CC) $(CCFLAGS) -MM *.c > .dep
+
+.PHONY: clean
+clean:
+	rm -f $(OBJS) dsoda
 
 -include .dep

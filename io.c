@@ -3,10 +3,12 @@
 #include <stdlib.h>
 #include <usb.h>
 
-#include "hantek_io.h"
+#include "io.h"
 #include "local.h"
 
 typedef unsigned char u8;
+
+#define DSO_CHECK	
 
 unsigned int dso_trigger_point = 0;
 

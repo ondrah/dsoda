@@ -1,8 +1,7 @@
 #include <unistd.h>
 #include <string.h>
-#include "hantek_thread.h"
-#include "hantek_io.h"
-#include "hantek_gui.h"
+#include "thread.h"
+#include "io.h"
 #include "local.h"
 
 static int fl_terminate = 0;
@@ -38,15 +37,11 @@ void *dso_thread(void *ptr)
             case 0:	// empty
 				dso_trigger_enabled();
 				dso_force_trigger();
-				//usleep(period_usec / 2);
-				//usleep(period_usec);
-				sleep(1);
+				usleep(dso_period_usec / 2);
                 break;
 
 			case 1: // sampling
-				//usleep(period_usec / 3);
-				//usleep(period_usec);
-				sleep(1);
+				usleep(dso_period_usec / 2);
                 break;
 
 			case 2: // full

@@ -3,7 +3,7 @@
 
 #include <gtk/gtk.h>
 
-int display_init(int argv, char **argc);
+int display_init(int *argc, char ***argv);
 void display_done();
 GtkWidget *display_create_widget();
 void display_refresh(GtkWidget *da);
