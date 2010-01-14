@@ -100,10 +100,10 @@ void update_screen()
 		}
 
 		for (int i = trigger_point; i < my_buffer_size; i++) {
-			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 		for (int i = 0; i < trigger_point; i++) {
-			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i+t] / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 		glEnd();
 		glEndList();
@@ -420,6 +420,21 @@ int display_init(int *pargc, char ***pargv)
   return 0;
 }
 
+static
+gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+{
+	DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
+	return FALSE;
+}
+
+static
+gboolean mouse_button_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+{
+	DMSG("!\n");
+
+	return FALSE;
+}
+
 GtkWidget *display_create_widget()
 {
 	GtkWidget *drawing_area = gtk_drawing_area_new ();
@@ -431,6 +446,16 @@ GtkWidget *display_create_widget()
 	g_signal_connect_after (G_OBJECT (drawing_area), "realize", G_CALLBACK (realize), NULL);
 	g_signal_connect (G_OBJECT (drawing_area), "configure_event", G_CALLBACK (configure_event), NULL);
 	g_signal_connect (G_OBJECT (drawing_area), "expose_event", G_CALLBACK (expose_event), NULL);
+
+	gtk_widget_add_events(drawing_area,
+			GDK_POINTER_MOTION_MASK |
+			GDK_BUTTON_PRESS_MASK /*|
+			GDK_VISIBILITY_NOTIFY_MASK*/
+			);
+
+	g_signal_connect(G_OBJECT(drawing_area), "motion_notify_event", G_CALLBACK(mouse_motion_cb), 0);
+	g_signal_connect(G_OBJECT(drawing_area), "button_press_event", G_CALLBACK(mouse_button_cb), 0);
+	g_signal_connect(G_OBJECT(drawing_area), "button_release_event", G_CALLBACK(mouse_button_cb), 0);
 
 	gtk_widget_show (drawing_area);
 	//gtk_timeout_add(1000 / 24, update_timer_cb, 0);

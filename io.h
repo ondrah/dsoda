@@ -164,5 +164,6 @@ int dso_get_capture_state(int *tp);
 
 extern pthread_mutex_t buffer_mutex;
 extern volatile unsigned int dso_period_usec;
+extern int dso_initialized;
 
 #endif

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include <stdio.h>
+#include <math.h>
 
 #include "io.h"
 #include "thread.h"
@@ -38,8 +39,6 @@ static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
 
 unsigned int trigger_point = 0;
-
-static int dso_initialized = 0;
 
 static int p[2];	// dso_thread => gui update mechanism pipe
 
@@ -84,26 +83,25 @@ static GtkWidget *time_per_window, *set_srate, *set_bsize, *run_button;
 static
 void run_clicked()
 {
-	//DMSG("run clicked\n");
-	if(!dso_initialized)
-		return;
-
 	int state = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(run_button));
 	if(state) {
 		DMSG("running capture\n");
 		gtk_button_set_label(GTK_BUTTON(run_button), "Stop");
-		dso_capture_start();
-
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
-		//dso_set_filter(reject_hf);
-
-		dso_thread_resume();
 		fl_running = 1;	// start updating the screen
+
+		if(dso_initialized) {
+			dso_capture_start();
+			dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+			//dso_set_filter(reject_hf);
+			dso_thread_resume();
+		}
 	} else {
 		DMSG("stopping capture\n");
-		dso_thread_pause();
 		gtk_button_set_label(GTK_BUTTON(run_button), "Run");
 		fl_running = 0;
+
+		if(dso_initialized)
+			dso_thread_pause();
 	}
 }
 
@@ -274,6 +272,8 @@ void buffer_size_cb()
 	update_time_per_window();
 }
 
+static void simul_generate();
+
 static
 void sampling_rate_cb()
 {
@@ -282,8 +282,10 @@ void sampling_rate_cb()
 
 	dso_period_usec = 1000000 / nr_sampling_rates[sampling_rate_idx];
 
-	if(!dso_initialized)
+	if(!dso_initialized) {
+		simul_generate();
 		return;
+	}
 
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
 	//dso_set_filter(reject_hf);
@@ -368,7 +370,7 @@ gint update_gui_cb()
 
 	pthread_mutex_lock(&buffer_mutex);
 	memcpy(my_buffer, dso_buffer, 2 * dso_buffer_size);
-	memset(dso_buffer, 0, dso_buffer_size * 2);
+	//memset(dso_buffer, 0, dso_buffer_size * 2);
 	dso_buffer_dirty = 0;
 	trigger_point = dso_trigger_point;
 	pthread_mutex_unlock(&buffer_mutex);
@@ -378,6 +380,28 @@ gint update_gui_cb()
 
 	return RETVAL;
 #undef RETVAL
+}
+
+static
+gboolean simul_dso()
+{
+	trigger_point += 10;
+
+	if(fl_running)
+		display_refresh(display_area);
+
+	return TRUE;
+}
+
+static
+void simul_generate()
+{
+	int dr = nr_sampling_rates[5], sr = nr_sampling_rates[sampling_rate_idx];
+	float fac = (float)dr / sr;
+	for(int i = 0; i < my_buffer_size; i++) {
+		my_buffer[2 * i + 0] = 128 * sin(i * fac / 3) + 128;
+		my_buffer[2 * i + 1] = 128 * cos(i * fac / 2) + 128;
+	}
 }
 
 void dso_update_gui()
@@ -613,10 +637,8 @@ create_control_window(int x, int y)
 	set_srate = gtk_combo_box_new_text();
 	for(j = 0; j < SCALAR(str_sampling_rates); j++)
 		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_srate), j, str_sampling_rates[j]);
-
-	gtk_combo_box_set_active(GTK_COMBO_BOX(set_srate), 0);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(set_srate), sampling_rate_idx);
 	gtk_box_pack_start (GTK_BOX (settings_box), set_srate, TRUE, TRUE, 0);
-
 	g_signal_connect (G_OBJECT (set_srate), "changed", G_CALLBACK (sampling_rate_cb), 0);
 
 	// time per window
@@ -736,13 +758,12 @@ main (gint argc, char *argv[])
 	g_io_add_watch(channel, G_IO_IN, update_gui_cb, 0);
 	g_io_channel_unref(channel);
 
-	dso_initialized = !dso_init();
+	dso_init();
 	int fl_noinit = 0;
 
 	dso_period_usec = 1000000 / nr_sampling_rates[sampling_rate_idx];
 
-	if(dso_initialized)
-		dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
+	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
 
 	if(!fl_noinit && dso_initialized) {
 		int da;
@@ -775,8 +796,10 @@ main (gint argc, char *argv[])
 
 	update_time_per_window();
 
-	//gtk_timeout_add(period_usec / 1000, update_gui_cb, (gpointer)box);
-	//g_signal_connect(G_OBJECT(), "refresh", G_CALLBACK(update_gui), 0);
+	if(!dso_initialized) {
+		simul_generate();
+		g_timeout_add(1000 / 30, simul_dso, 0);
+	}
 
 	gtk_main ();
 	//g_main_loop_run();

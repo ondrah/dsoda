@@ -29,15 +29,19 @@ static int epOutMaxPacketLen, epInMaxPacketLen;
 static int timeout = 250, attempts = 3;
 
 unsigned char *dso_buffer = 0;
-unsigned char *my_buffer = 0;
+unsigned char *my_buffer;
 int dso_buffer_dirty = 0;
 unsigned int dso_buffer_size = 0;
+
+int dso_initialized = 0;
 
 int dso_adjust_buffer(unsigned int size)
 {
 	pthread_mutex_lock(&buffer_mutex);
-	free(dso_buffer);
-	dso_buffer = malloc(size * 2);
+	if(dso_initialized) {
+		free(dso_buffer);
+		dso_buffer = malloc(size * 2);
+	}
 	dso_buffer_size = size;
 	pthread_mutex_unlock(&buffer_mutex);
 
@@ -143,12 +147,14 @@ int dso_init()
     }
 
 	DMSG("properly initialized\n");
+	dso_initialized = 1;
     return 0;
 }
 
 void dso_done()
 {
-
+	dso_initialized = 0;
+	usb_close(udh);
 }
 
 int dso_write_bulk(void *buffer, int len)
