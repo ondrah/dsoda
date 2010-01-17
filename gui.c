@@ -25,18 +25,22 @@
 
 static int fl_running = 0;
 
+
+#define COMPUTE_TRIGGER_POSITION(tp)	(tp * 0xFFFE + 0xD7FE * (1 - tp))
+
 static int voltage_ch[2] = { VOLTAGE_5V, VOLTAGE_5V };
 static int trigger_slope = SLOPE_PLUS;
 static int trigger_source = TRIGGER_CH1;
-static int trigger_position = 0xebfe;
+static int trigger_position = COMPUTE_TRIGGER_POSITION(0.5);
 static int selected_channels = SELECT_CH1CH2;
 static int buffer_size = 10240;
-//static int reject_hf = 0;		//< reject high frequencies
+static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
 static int offset_ch1 = 0xb9, offset_ch2 = 0x89, offset_t = 0x99;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
+int fl_math = 0;
 
 unsigned int trigger_point = 0;
 
@@ -54,6 +58,9 @@ enum
 };
 
 #define SCALAR(a)	(sizeof(a) / sizeof(a[0]))
+
+static const char *str_graph_types[] = { "X(t)", "X(y)", "FFT" };
+int graph_type = 0;
 
 static const char *str_buffer_sizes[] = { "10KS/ch", "512KS/ch", "1MS/ch"};
 static const unsigned int nr_buffer_sizes[] = { 10240, 524228, 1048576 };
@@ -92,7 +99,8 @@ void run_clicked()
 		if(dso_initialized) {
 			dso_capture_start();
 			dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
-			//dso_set_filter(reject_hf);
+			dso_set_filter(reject_hf);
+			dso_trigger_enabled();
 			dso_thread_resume();
 		}
 	} else {
@@ -200,6 +208,18 @@ void trigger_source_cb(GtkWidget *v, int ch)
 	if(fl_running) {
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
 	}
+}
+
+static
+void graph_type_cb(GtkWidget *w, int ch)
+{
+	graph_type = gtk_combo_box_get_active(GTK_COMBO_BOX(w));
+}
+
+static
+void math_cb(GtkWidget *w, int ch)
+{
+	fl_math = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w));
 }
 
 static
@@ -386,6 +406,7 @@ static
 gboolean simul_dso()
 {
 	trigger_point += 10;
+	trigger_point %= 10240;
 
 	if(fl_running)
 		display_refresh(display_area);
@@ -396,12 +417,18 @@ gboolean simul_dso()
 static
 void simul_generate()
 {
+#define SPEED_FAC	10*3.1415/10240
+#define AX	80
+#define AY	80
 	int dr = nr_sampling_rates[5], sr = nr_sampling_rates[sampling_rate_idx];
 	float fac = (float)dr / sr;
 	for(int i = 0; i < my_buffer_size; i++) {
-		my_buffer[2 * i + 0] = 128 * sin(i * fac / 3) + 128;
-		my_buffer[2 * i + 1] = 128 * cos(i * fac / 2) + 128;
+		my_buffer[2 * i + 0] = AX * sin(i * fac / 3 * SPEED_FAC) + 128;
+		my_buffer[2 * i + 1] = AY * cos(i * fac / 2 * SPEED_FAC) + 128;
 	}
+#undef SPEED_FAC
+#undef AX
+#undef AY
 }
 
 void dso_update_gui()
@@ -439,20 +466,28 @@ void load_file_cb()
 	gtk_widget_destroy(gw);
 }
 
+static
+void save_file_cb()
+{
+}
+
 static void
 create_menu(GtkWidget *parent)
 {
     GtkWidget *file_submenu = gtk_menu_new();
-	GtkWidget *open_item = gtk_menu_item_new_with_label ("Open");
-	g_signal_connect_swapped (open_item, "activate", G_CALLBACK (load_file_cb), 0);
-	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), open_item);
+	GtkWidget *open_item = gtk_menu_item_new_with_label("Open");
+	GtkWidget *save_item = gtk_menu_item_new_with_label("Save");
+	g_signal_connect(open_item, "activate", G_CALLBACK(load_file_cb), 0);
+	g_signal_connect(save_item, "activate", G_CALLBACK(save_file_cb), 0);
+	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), open_item);
+	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), save_item);
 	//GtkWidget *clear_item = gtk_menu_item_new_with_label ("Clear");
 	//g_signal_connect_swapped (clear_item, "activate", G_CALLBACK (clear_graph_cb), 0);
 	//gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), clear_item);
-	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), gtk_separator_menu_item_new ());
+	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), gtk_separator_menu_item_new());
 	GtkWidget *quit_item = gtk_menu_item_new_with_label ("Quit");
-	g_signal_connect_swapped (quit_item, "activate", G_CALLBACK (gtk_main_quit), 0);
-	gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), quit_item);
+	g_signal_connect_swapped(quit_item, "activate", G_CALLBACK(gtk_main_quit), 0);
+	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), quit_item);
 
     GtkWidget *file_menu = gtk_menu_item_new_with_label ("File");
 	gtk_menu_item_set_submenu (GTK_MENU_ITEM (file_menu), file_submenu);
@@ -519,13 +554,12 @@ offset_t_cb(GtkAdjustment *adj)
 static void
 position_t_cb(GtkAdjustment *adj)
 {
-	int nval = adj->value;
-	DMSG("trigger position adjusted, 0x%x\n", nval);
-	//offset_t = nval;
-	//update_offset();
-	DMSG("WRITEME!\n");
-}
+	float nval = adj->value;
 
+	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
+	DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
+	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+}
 
 static
 GtkWidget *create_display_window()
@@ -557,7 +591,7 @@ GtkWidget *create_display_window()
 	GtkObject *lev_ch1 = gtk_adjustment_new(offset_ch1, 0.0, 0xff, 0, 0, 0);
 	GtkObject *lev_ch2 = gtk_adjustment_new(offset_ch2, 0.0, 0xff, 0, 0, 0);
 	GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 0xff, 0, 0, 0);
-	GtkObject *pos_t = gtk_adjustment_new(0x80, 0.0, 0xff, 0, 0, 0);
+	GtkObject *pos_t = gtk_adjustment_new(0.5, 0.0, 1.0, 0, 0, 0);
     GtkWidget *scale_ch1 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch1));
     GtkWidget *scale_ch2 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch2));
     GtkWidget *scale_t = gtk_vscale_new(GTK_ADJUSTMENT(lev_t));
@@ -674,9 +708,22 @@ create_control_window(int x, int y)
 	GtkWidget *ch1_box = create_channel_box("Channel 1", 0, box);
 	GtkWidget *ch2_box = create_channel_box("Channel 2", 1, box);
 
-   gtk_box_pack_start (GTK_BOX(hbox), ch1_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX(hbox), ch2_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX(box2), hbox, TRUE, TRUE, 0);
+	gtk_box_pack_start (GTK_BOX(hbox), ch1_box, TRUE, TRUE, 0);
+	gtk_box_pack_start (GTK_BOX(hbox), ch2_box, TRUE, TRUE, 0);
+	gtk_box_pack_start (GTK_BOX(box2), hbox, TRUE, TRUE, 0);
+
+	GtkWidget *c_graph = gtk_combo_box_new_text();
+	for(int i=0;i<SCALAR(str_graph_types);i++)
+		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_graph), i, str_graph_types[i]);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(c_graph), graph_type);
+	g_signal_connect(G_OBJECT(c_graph), "changed", G_CALLBACK(graph_type_cb), 0);
+	gtk_box_pack_start(GTK_BOX(box2), c_graph, TRUE, TRUE, 0);
+
+	GtkWidget *b_math = gtk_check_button_new_with_label("Math");
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(b_math), 0);
+	g_signal_connect(GTK_OBJECT(b_math), "toggled", G_CALLBACK(math_cb), 0);
+	gtk_box_pack_start(GTK_BOX(box2), b_math, TRUE, TRUE, 0);
+
    gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
    gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
 
@@ -703,6 +750,7 @@ static
 GtkWidget *create_math_window()
 {
 	GtkWidget *w = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	gtk_window_set_title (GTK_WINDOW (w), "Math");
 	GtkWidget *hbox = gtk_hbox_new(FALSE, 5);
 
 	GtkWidget *c_src[2];
@@ -719,6 +767,7 @@ GtkWidget *create_math_window()
 	GtkWidget *c_op = gtk_combo_box_new_text();
 	for(int i = 0; i < SCALAR(fn); i++)
 		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_op), i, fn[i]);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(c_op), 0);
 	
 	
 	gtk_box_pack_start(GTK_BOX(hbox), c_src[0], FALSE, FALSE, 0);
@@ -779,8 +828,8 @@ main (gint argc, char *argv[])
 		}
 		DMSG("trigger: 0x%x - 0x%x\n", offset_ranges.trigger[0], offset_ranges.trigger[1]);
 
-		int cl;
-		dso_get_cal_data(&cl);
+		//int cl;
+		//dso_get_cal_data(&cl);
 
 		dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
 		update_offset();

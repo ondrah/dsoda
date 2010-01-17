@@ -47,7 +47,7 @@ int dso_adjust_buffer(unsigned int size)
 
 	free(my_buffer);
 	my_buffer = malloc(size * 2);
-	memset(my_buffer, 0, sizeof(my_buffer_size * 2));
+	memset(my_buffer, 0, my_buffer_size * 2);
 	return 0;
 }
 
@@ -501,7 +501,7 @@ int dso_get_channel_data(void *buffer, int bufferSize)
 //    DMSG("Getting %i packets (%i bytes length), buffer len = %i bytes", packets, epInMaxPacketLen, bufferSize);
 
     for(int i=0; i<packets; i++) {
-        rv = dso_read_bulk((unsigned char*)buffer + i*epInMaxPacketLen, epInMaxPacketLen);
+        rv = dso_read_bulk(buffer + i*epInMaxPacketLen, epInMaxPacketLen);
 		//DMSG("rv = %d\n", rv);
         if (rv < 0) {
             DMSG("read failed\n");

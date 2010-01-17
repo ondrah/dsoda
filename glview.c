@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 #include <gtk/gtkgl.h>
 #include <math.h>
+#include <sys/time.h>
 
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -9,7 +10,14 @@
 #include "local.h"
 
 static GdkGLConfig *glconfig;
-int gl_channels, gl_grid;
+int gl_channels, gl_grid, gl_math, gl_cursor;
+
+struct cursor_coord {
+	float x, y;
+};
+
+struct cursor_coord cursor[2] = { {.x = 0, .y = 0}, {.x = 0, .y = 0}}; 
+int cursor_active = 0;
 
 #define DP_DEPTH	16
 #define MAX_CHANNELS 2
@@ -20,8 +28,10 @@ int gl_channels, gl_grid;
 #define DIVS_VOLTAGE 8
 #define VOLTAGE_SCALE	32
 
+#define MARGIN_CANVAS	0.05
+
 int dpIndex = 0;
-int interpolationMode = 0;
+int interpolationMode = 1;
 
 static
 void gl_done()
@@ -48,6 +58,8 @@ void gl_init()
 	printf("gl_grid = %d\n", gl_grid);
     gl_channels = glGenLists(MAX_CHANNELS);
 	printf("gl_channels = %d\n", gl_channels);
+    gl_math = glGenLists(1);
+	gl_cursor = glGenLists(2);
     glShadeModel(GL_SMOOTH/*GL_FLAT*/);
     glLineStipple (1, 0x000F);
 }
@@ -57,15 +69,24 @@ void gl_resize(int w, int h)
    // glViewport(0, 0, (GLint)w, (GLint)h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-DIVS_TIME/2 - 0.1, DIVS_TIME/2 + 0.1, -DIVS_VOLTAGE/2 - 0.1, DIVS_VOLTAGE/2 + 0.1, -1.0, 1.0);
+    glOrtho(-DIVS_TIME/2 - MARGIN_CANVAS, DIVS_TIME/2 + MARGIN_CANVAS, -DIVS_VOLTAGE/2 - MARGIN_CANVAS, DIVS_VOLTAGE/2 + MARGIN_CANVAS, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
-int timeDiv = 10;
-int timeShift = 10;
+struct timeval otime = { .tv_sec = 0, .tv_usec = 0 };
 
 void update_screen()
 {
+	struct timeval tv;
+
+   	gettimeofday(&tv, 0);
+	unsigned int dmsec = 1000 * (tv.tv_sec - otime.tv_sec) + (tv.tv_usec - otime.tv_usec) / 1000;
+
+	if(dmsec < 1000.0 / 30)
+		return;
+
+	otime = tv;
+
     glPushMatrix();
    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -99,103 +120,53 @@ void update_screen()
 			glColor4f(1.0f, 1.0f, 0.0f, 0.5);
 		}
 
-		for (int i = trigger_point; i < my_buffer_size; i++) {
-			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//		for (int i = trigger_point; i < my_buffer_size; i++) {
+//			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//		}
+//		for (int i = 0; i < trigger_point; i++) {
+//			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//		}
+
+		int x = trigger_point;
+		for (int i = 0; i < my_buffer_size; i++, x++) {
+			if(x >= my_buffer_size)
+				x = 0;
+			glVertex2f(DIVS_TIME * (i  / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
-		for (int i = 0; i < trigger_point; i++) {
-			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
-		}
+
 		glEnd();
 		glEndList();
 	}
 
-				/*
-                if (mathType != MATHTYPE_OFF)
-                {
-                    glNewList(gl_channels + dpIndex*MAX_CHANNELS + MAX_CHANNELS, GL_COMPILE);
-                    glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
-                    unsigned p = aThread->triggerPoint + viewPos;
-                    for (unsigned i = 0; i < viewLen; i++)
-                    {
-                        if (p >= samplesInBuffer)
-                        {
-                            p -= samplesInBuffer;
-                        }
-                        int ch2Val = aThread->buffer[p][0] - VOLTAGE_SCALE/2;
-                        int ch1Val = aThread->buffer[p++][1] - VOLTAGE_SCALE/2;
-                        switch(mathType)
-                        {
-                            case MATHTYPE_1ADD2:
-                                glVertex2f(i, ch1Val + ch2Val + chMOffset);
-                                break;
-                            case MATHTYPE_1SUB2:
-                                glVertex2f(i, ch1Val - ch2Val + chMOffset);
-                                break;
-                            case MATHTYPE_2SUB1:
-                                glVertex2f(i, ch2Val - ch1Val + chMOffset);
-                                break;
-                        }
-                    }
-                    glEnd();
-                    glEndList();
-                }
-				*/
+	if(fl_math) {
+		glNewList(gl_math, GL_COMPILE);
+		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
+		glColor4f(1.0f, 0.0f, 0.0f, 0.5);
 
-//                glPushMatrix();
-//                //glTranslatef(-DIVS_TIME/2, -DIVS_VOLTAGE/2, 0);
-//                //glScalef(DIVS_TIME*timeDiv/samplesInScale, DIVS_VOLTAGE/VOLTAGE_SCALE, 1.0);
-//                glScalef(DIVS_TIME*timeDiv/samplesInScale, DIVS_VOLTAGE/VOLTAGE_SCALE, 1.0);
-//
-//                glEnable(GL_LINE_SMOOTH);
-//                glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-//
-//                for (int t = 0 ; t < MAX_CHANNELS; t++)
-//                {
-//                   // if (chActive[t])
-//                    {
-//                        for (int i = (digitalPhosphor?DP_DEPTH:0); i >= 0; i--)
-//                        {
-//                            glColor4f(chColor[t][0], chColor[t][1], chColor[t][2],
-//                                chColor[t][3] - 0.7*log(i + 1));
-//                            int index = (dpIndex + i) % DP_DEPTH;
-//						  glCallList(gl_channels + index*MAX_CHANNELS + t);
-//                        }
-//                    }
-//                }
-				/*
-                if (mathType != MATHTYPE_OFF)
-                {
-                    // TODO: find error in math channel digital phosphor code
-                    for (int i = (digitalPhosphor?DP_DEPTH:0); i >= 0; i--)
-                    {
-                        glColor4f(chColor[MAX_CHANNELS][0], chColor[MAX_CHANNELS][1],
-                            chColor[MAX_CHANNELS][2], chColor[MAX_CHANNELS][3] - 0.7*log(i + 1));
-                        int index = (dpIndex + i) % DP_DEPTH;
-                        glCallList(gl_channels + index*MAX_CHANNELS + MAX_CHANNELS);
-                    }
-                }
-				*/
-//                if (digitalPhosphor)
-//                {
-//                    if (++dpIndex >= DP_DEPTH)
-//                    {
-//                        dpIndex = 0;
-//                    }
-//                }
+		for (int i = trigger_point; i < my_buffer_size; i++) {
+			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
+			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+		}
+		for (int i = 0; i < trigger_point; i++) {
+			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
+			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+		}
 
-/*
-                glPushMatrix();
-                glColor4f(0.0, 1.0, 0.0, 1.0);
-                glTranslatef(-DIVS_TIME/2, -DIVS_VOLTAGE/2, 0.0);
-                str=QString("%1").arg("400ms");
-                font.glString(str, 0.3);
-                glPopMatrix();
-*/
+		glEnd();
+		glEndList();
+	}
+
               //  glDisable(GL_LINE_SMOOTH);
 				glClear(GL_COLOR_BUFFER_BIT);
-                glCallList(gl_channels);
-                glCallList(gl_channels + 1);
+				if(capture_ch[0])
+					glCallList(gl_channels);
+				if(capture_ch[1])
+					glCallList(gl_channels + 1);
+				if(fl_math)
+					glCallList(gl_math);
                 glCallList(gl_grid);
+				glCallList(gl_cursor);
+				glCallList(gl_cursor + 1);
                 glPopMatrix();
             /*    break;
 
@@ -252,8 +223,6 @@ void update_screen()
                 glCallList(gl_grid);    // Draw grid
                 break;
 				*/
-
-//    glPopMatrix();
 
 }
 
@@ -421,17 +390,63 @@ int display_init(int *pargc, char ***pargv)
 }
 
 static
+void cursor_get_coords(struct cursor_coord *cc, GtkWidget *w, GdkEventMotion *e)
+{
+	cc->x = DIVS_TIME * e->x / w->allocation.width - DIVS_TIME / 2;
+	cc->y = -(DIVS_VOLTAGE * e->y / w->allocation.height - DIVS_VOLTAGE / 2);
+}
+
+static
+void cursor_draw(int i)
+{
+	struct cursor_coord *ac = &cursor[i];
+
+	glNewList(gl_cursor + i, GL_COMPILE);
+	glBegin(GL_LINE_STRIP);
+	glColor4f(0.0f, 1.0f, 0.6f, 0.8);
+
+	glVertex2f(ac->x, -DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x, DIVS_VOLTAGE / 2);
+	glEnd();
+
+	glBegin(GL_LINES);
+	glVertex2f(-DIVS_TIME / 2, ac->y);
+	glVertex2f(DIVS_TIME / 2, ac->y);
+
+	glEnd();
+	glEndList();
+}
+
+static
 gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 {
-	DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
+	//DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
+	if(!cursor_active)
+		return FALSE;
+
+	if(w->allocation.width < 0 || w->allocation.height < 0)
+		return FALSE;
+
+	cursor_get_coords(&cursor[1], w, e);
+	cursor_draw(1);
+
 	return FALSE;
 }
 
 static
-gboolean mouse_button_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+gboolean mouse_button_press_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 {
-	DMSG("!\n");
+	cursor_active = 1;
+	cursor_get_coords(&cursor[0], w, e);
+	cursor_draw(0);
 
+	return FALSE;
+}
+
+static
+gboolean mouse_button_release_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+{
+	cursor_active = 0;
 	return FALSE;
 }
 
@@ -449,13 +464,15 @@ GtkWidget *display_create_widget()
 
 	gtk_widget_add_events(drawing_area,
 			GDK_POINTER_MOTION_MASK |
-			GDK_BUTTON_PRESS_MASK /*|
-			GDK_VISIBILITY_NOTIFY_MASK*/
+			GDK_BUTTON_PRESS_MASK |
+			GDK_BUTTON_RELEASE_MASK
+
+	//		GDK_VISIBILITY_NOTIFY_MASK
 			);
 
 	g_signal_connect(G_OBJECT(drawing_area), "motion_notify_event", G_CALLBACK(mouse_motion_cb), 0);
-	g_signal_connect(G_OBJECT(drawing_area), "button_press_event", G_CALLBACK(mouse_button_cb), 0);
-	g_signal_connect(G_OBJECT(drawing_area), "button_release_event", G_CALLBACK(mouse_button_cb), 0);
+	g_signal_connect(G_OBJECT(drawing_area), "button_press_event", G_CALLBACK(mouse_button_press_cb), 0);
+	g_signal_connect(G_OBJECT(drawing_area), "button_release_event", G_CALLBACK(mouse_button_release_cb), 0);
 
 	gtk_widget_show (drawing_area);
 	//gtk_timeout_add(1000 / 24, update_timer_cb, 0);

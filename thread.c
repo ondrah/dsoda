@@ -36,12 +36,12 @@ void *dso_thread(void *ptr)
         switch(cs) {
             case 0:	// empty
 				dso_trigger_enabled();
-				dso_force_trigger();
-				usleep(dso_period_usec / 2);
+				//dso_force_trigger();
+				usleep(2000);
                 break;
 
 			case 1: // sampling
-				usleep(dso_period_usec / 2);
+				usleep(2000);
                 break;
 
 			case 2: // full
@@ -54,8 +54,9 @@ void *dso_thread(void *ptr)
 				pthread_mutex_unlock(&buffer_mutex);
 
                 dso_capture_start();
-				dso_update_gui();
+				usleep(40000);
 				dso_trigger_enabled();
+				dso_update_gui();
                 break;
 
             default:

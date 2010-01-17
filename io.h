@@ -143,6 +143,8 @@ extern int dso_buffer_dirty;
 extern unsigned int dso_trigger_point;
 extern int fl_gui_running;
 extern int capture_ch[2];
+extern int fl_math;
+extern int graph_type;
 
 int dso_get_capture_state();
 int dso_capture_start();
@@ -161,6 +163,10 @@ int dso_begin_command();
 int dso_get_device_address(int *deviceAddress);
 int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset);
 int dso_get_capture_state(int *tp);
+int dso_trigger_enabled();
+int dso_force_trigger();
+
+void dso_update_gui();
 
 extern pthread_mutex_t buffer_mutex;
 extern volatile unsigned int dso_period_usec;
