@@ -6,20 +6,16 @@
 #define EP_BULK_OUT 2   // Endpoint for sending commands to DSO
 #define EP_BULK_IN  6   // Endpoint for reading data from DSO
 
-enum dso_commands
-{
-    cmdSetFilter = 0,
-    cmdSetTriggerAndSampleRate,
-    cmdForceTrigger,
-    cmdCaptureStart,
-    cmdTriggerEnabled,
-    cmdGetChannelData,
-    cmdGetCaptureState,
-    cmdSetVoltageAndCoupling,
-    cmdSetLogicalData,
-    cmdGetLogicalData,
-    cmdLast
-};
+#define	C_SET_FILTER	0x00
+#define C_CONFIGURE		0x01
+#define	C_FORCE_TRIGGER	0x02
+#define C_CAPTURE_START	0x03
+#define C_TRIGGER_ENABLED	0x04
+#define C_CAPTURE_GET_DATA	0x05
+#define C_CAPTURE_GET_STATE	0x06
+#define C_SET_VOLTAGE	0x07
+#define C_LOGICAL_DATA_SET	0x08
+#define C_LOGICAL_DATA_GET	0x09
 
 #define CONTROL_COMMAND	0xA2
 #define CONTROL_GETSPEED	0xB2

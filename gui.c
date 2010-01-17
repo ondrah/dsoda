@@ -33,7 +33,6 @@ static int trigger_slope = SLOPE_PLUS;
 static int trigger_source = TRIGGER_CH1;
 static int trigger_position = COMPUTE_TRIGGER_POSITION(0.5);
 static int selected_channels = SELECT_CH1CH2;
-static int buffer_size = 10240;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
 static int offset_ch1 = 0xb9, offset_ch2 = 0x89, offset_t = 0x99;
@@ -78,8 +77,9 @@ static const char *str_voltages[] = { "10mV", "20mV", "50mV", "100mV", "200mV", 
 static const char *str_attenuations[] = {"x1", "x10"};
 static int nr_attenuations[] = { 1, 10 };
 
-static int buffer_size_idx = 0, sampling_rate_idx = 8;
-volatile unsigned int dso_period_usec = 10000;
+static int buffer_size_idx = 0, sampling_rate_idx = 5;
+#define COMPUTE_PERIOD_USEC	(1000000 / nr_sampling_rates[sampling_rate_idx] * nr_buffer_sizes[buffer_size_idx])
+volatile unsigned int dso_period_usec;
 
 static GtkWidget *display_area;
 static GtkWidget *box;
@@ -97,8 +97,7 @@ void run_clicked()
 		fl_running = 1;	// start updating the screen
 
 		if(dso_initialized) {
-			dso_capture_start();
-			dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+			dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 			dso_set_filter(reject_hf);
 			dso_trigger_enabled();
 			dso_thread_resume();
@@ -193,7 +192,7 @@ void trigger_slope_cb(GtkWidget *v, int ch)
 		return;
 
 	if(fl_running) {
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	}
 }
 
@@ -206,7 +205,7 @@ void trigger_source_cb(GtkWidget *v, int ch)
 		return;
 
 	if(fl_running) {
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	}
 }
 
@@ -287,8 +286,10 @@ static
 void buffer_size_cb()
 {
 	buffer_size_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_bsize));
-	//dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
-	DMSG("buffer sizes other than 10240 not supported\n");
+	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
+	//DMSG("buffer sizes other than 10240 not supported\n");
+	if(dso_initialized)
+		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	update_time_per_window();
 }
 
@@ -300,14 +301,15 @@ void sampling_rate_cb()
 	sampling_rate_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_srate));
 	update_time_per_window();
 
-	dso_period_usec = 1000000 / nr_sampling_rates[sampling_rate_idx];
+	dso_period_usec = COMPUTE_PERIOD_USEC;
+		DMSG("period = %d\n", dso_period_usec);
 
 	if(!dso_initialized) {
 		simul_generate();
 		return;
 	}
 
-	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	//dso_set_filter(reject_hf);
 }
 
@@ -558,7 +560,7 @@ position_t_cb(GtkAdjustment *adj)
 
 	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
 	DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
-	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, buffer_size);
+	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 }
 
 static
@@ -810,7 +812,7 @@ main (gint argc, char *argv[])
 	dso_init();
 	int fl_noinit = 0;
 
-	dso_period_usec = 1000000 / nr_sampling_rates[sampling_rate_idx];
+	dso_period_usec = COMPUTE_PERIOD_USEC;
 
 	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
 

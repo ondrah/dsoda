@@ -129,9 +129,12 @@ void update_screen()
 
 		int x = trigger_point;
 		for (int i = 0; i < my_buffer_size; i++, x++) {
-			if(x >= my_buffer_size)
+			if(x >= my_buffer_size) {
 				x = 0;
-			glVertex2f(DIVS_TIME * (i  / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//				glEnd();
+//				glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
+			}
+			glVertex2f(DIVS_TIME * ((float) i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 
 		glEnd();
@@ -143,14 +146,17 @@ void update_screen()
 		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
 		glColor4f(1.0f, 0.0f, 0.0f, 0.5);
 
-		for (int i = trigger_point; i < my_buffer_size; i++) {
-			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
-			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+		int x = trigger_point;
+		for (int i = 0; i < my_buffer_size; i++, x++) {
+			if(x >= my_buffer_size)
+				x = 0;
+			int v = (my_buffer[2*x] + my_buffer[2*x + 1] ) >> 1;
+			glVertex2f(DIVS_TIME * ((float)(i - trigger_point) / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
-		for (int i = 0; i < trigger_point; i++) {
-			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
-			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
-		}
+//		for (int i = 0; i < trigger_point; i++) {
+//			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
+//			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+//		}
 
 		glEnd();
 		glEndList();

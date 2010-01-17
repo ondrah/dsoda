@@ -104,8 +104,8 @@ struct usb_dev_handle *dso_prepare()
 					return 0;
 				}
 				if (usb_claim_interface(res, id->bInterfaceNumber)) {
-					DMSG("Not able to claim USB interface: %s\n", usb_strerror());
-					if (usb_close(udh)) {
+					DMSG("%s\n", usb_strerror());
+					if (usb_close(res)) {
 						DMSG("Can't close USB handle");
 					}
 
@@ -113,8 +113,7 @@ struct usb_dev_handle *dso_prepare()
 					return 0;
 				}
 
-				for (i = 0; i < id->bNumEndpoints; i++)
-				{
+				for (i = 0; i < id->bNumEndpoints; i++) {
 					struct usb_endpoint_descriptor *ep = &id->endpoint[i];
 					switch (ep->bEndpointAddress) {
 						case 0x02:  // EP OUT
@@ -267,7 +266,7 @@ int dso_set_filter(int hf_reject)
         return rv;
     }
 
-    unsigned char command[8] = {cmdSetFilter, 0x0F, 0, 0, 0, 0, 0, 0};
+    unsigned char command[8] = {C_SET_FILTER, 0x0F, 0, 0, 0, 0, 0, 0};
     command[2] = hf_reject ? 0x04 : 0x00;
 
     rv = dso_write_bulk(command, sizeof(command));
@@ -283,9 +282,6 @@ int dso_set_filter(int hf_reject)
 }
 
 
-/*!
-    \fn HantekDSOIO::dsoSetTriggerAndSampleRate(int timeBase, int selectedChannel, int triggerSource, int triggerSlope, int triggerPosition, int bufferSize)
- */
 int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSource, int triggerSlope, int triggerPosition, int bufferSize)
 {
 	const u8 sampling_speed[][3] = {
@@ -335,12 +331,10 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	}
 
 	ts = triggerSlope == SLOPE_PLUS ? 0x0 : 0x8;
-
-	//bs = bufferSize == 10240 ? : ;
-	bs = 0x06;	// small buffer, large needs different sampling table
+	bs = bufferSize == 10240 ? 0x06 : 0x0A;
 
     u8 c[12];
-	c[0] = cmdSetTriggerAndSampleRate;
+	c[0] = C_CONFIGURE;
 	c[1] = 0x00;
 	c[2] = sampling_speed[my_speed][0] | bs;
 	c[3] = sc | ts;
@@ -386,7 +380,7 @@ int dso_force_trigger()
         return rv;
     }
 
-    unsigned char command[2] = {cmdForceTrigger, 0};
+    unsigned char command[2] = {C_FORCE_TRIGGER, 0};
     if(dso_write_bulk(command, sizeof(command)) < 0) {
         DMSG("In function %s", __FUNCTION__);
 		dso_unlock();
@@ -397,9 +391,6 @@ int dso_force_trigger()
     return 0;
 }
 
-/*!
-    \fn HantekDSOIO::dsoCaptureStart()
- */
 int dso_capture_start()
 {
     if (dso_begin_command(0) < 0)
@@ -415,7 +406,7 @@ int dso_capture_start()
         return rv;
     }
 
-    unsigned char command[2] = {cmdCaptureStart, 0};
+    unsigned char command[2] = {C_CAPTURE_START, 0};
     if (dso_write_bulk(command, sizeof(command)) < 0) {
 		dso_unlock();
 		return -1;
@@ -449,7 +440,7 @@ int dso_trigger_enabled()
         return rv;
     }
 
-    unsigned char command[2] = {cmdTriggerEnabled, 0};
+    unsigned char command[2] = {C_TRIGGER_ENABLED, 0};
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0)
     {
@@ -483,7 +474,7 @@ int dso_get_channel_data(void *buffer, int bufferSize)
         return rv;
     }
 
-    unsigned char command[2] = {cmdGetChannelData, 0};
+    unsigned char command[2] = {C_CAPTURE_GET_DATA, 0};
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0) {
 		DMSG("write error\n");
@@ -529,7 +520,7 @@ int dso_get_capture_state(int *tp)
         return rv;
     }
 
-    unsigned char command[2] = {cmdGetCaptureState, 0};
+    unsigned char command[2] = {C_CAPTURE_GET_STATE, 0};
     if (dso_write_bulk(command, sizeof(command)) < 0) {
 		dso_unlock();
 		return -1;
@@ -580,7 +571,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
         return rv;
     }
 
-    unsigned char command[8] = {cmdSetVoltageAndCoupling, 0, 0, 0, 0, 0, 0, 11};
+    unsigned char command[8] = {C_SET_VOLTAGE, 0, 0, 0, 0, 0, 0, 11};
 
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0) {
@@ -631,7 +622,7 @@ int dso_set_logical_data(int data)
         return rv;
     }
 
-    unsigned char command[8] = {cmdSetLogicalData, 0x0F, 0, 0, 0, 0, 0, 0};
+    unsigned char command[8] = {C_LOGICAL_DATA_SET, 0x0F, 0, 0, 0, 0, 0, 0};
     command[2] = (unsigned char)data;
 
     rv = dso_write_bulk(command, sizeof(command));
@@ -646,9 +637,6 @@ int dso_set_logical_data(int data)
     return 0;
 }
 
-/*!
-    \fn HantekDSOIO::dsoGetLogicalData(void *buffer)
- */
 int dso_get_logical_data(void *buffer)
 {
     dso_lock();
@@ -667,7 +655,7 @@ int dso_get_logical_data(void *buffer)
         return rv;
     }
 
-    unsigned char command[2] = {cmdGetLogicalData, 0};
+    unsigned char command[2] = {C_LOGICAL_DATA_GET, 0};
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0)
     {

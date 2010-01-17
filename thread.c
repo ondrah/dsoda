@@ -22,47 +22,51 @@ void *dso_thread(void *ptr)
 				return 0;
 		}
 
+		//DMSG("period = %d\n", dso_period_usec);
+
+		dso_capture_start();
+		usleep(dso_period_usec);
+		dso_trigger_enabled();
+
+		int fl_complete = 0;
         int trPoint = 0;
-        int cs = dso_get_capture_state(&trPoint);
-        if (cs < 0) {
-            DMSG("dso_get_capture_state io error\n");
-			continue;
-        }
 
-		//DMSG("trPoint = 0x%x\n", trPoint);
+		while(!fl_complete) {
+			int cs = dso_get_capture_state(&trPoint);
+			if (cs < 0) {
+				DMSG("dso_get_capture_state io error\n");
+				continue;
+			}
 
-		//DMSG("capture_state= %d\n", cs);
+			switch(cs) {
+				case 0:	// empty
+					dso_trigger_enabled();
+					//dso_force_trigger();
+					usleep(dso_period_usec);
+					break;
 
-        switch(cs) {
-            case 0:	// empty
-				dso_trigger_enabled();
-				//dso_force_trigger();
-				usleep(2000);
-                break;
+				case 1: // in progress
+					usleep(dso_period_usec >> 1);
+					break;
 
-			case 1: // sampling
-				usleep(2000);
-                break;
+				case 2: // full
+					pthread_mutex_lock(&buffer_mutex);
+					if (dso_get_channel_data(dso_buffer, dso_buffer_size) < 0) {
+						DMSG("Error in command GetChannelData\n");
+					}
+					dso_buffer_dirty = 1;
+					dso_trigger_point = trPoint;
+					pthread_mutex_unlock(&buffer_mutex);
 
-			case 2: // full
-				pthread_mutex_lock(&buffer_mutex);
-                if (dso_get_channel_data(dso_buffer, dso_buffer_size) < 0) {
-                    DMSG("Error in command GetChannelData\n");
-                }
-				dso_buffer_dirty = 1;
-				dso_trigger_point = trPoint;
-				pthread_mutex_unlock(&buffer_mutex);
+					dso_update_gui();
+					fl_complete = 1;
+					break;
 
-                dso_capture_start();
-				usleep(40000);
-				dso_trigger_enabled();
-				dso_update_gui();
-                break;
-
-            default:
-                DMSG("unknown capture state %i\n", cs);
-				break;
-        }
+				default:
+					DMSG("unknown capture state %i\n", cs);
+					break;
+			}
+		}
     }
 	return 0;
 }
