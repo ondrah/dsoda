@@ -30,6 +30,9 @@ int cursor_active = 0;
 
 #define MARGIN_CANVAS	0.05
 
+#define CHANNEL1_RGB	0.0f, 1.0f, 0.0f
+#define CHANNEL2_RGB	1.0f, 1.0f, 0.0f
+
 int dpIndex = 0;
 int interpolationMode = 1;
 
@@ -55,13 +58,11 @@ void gl_init()
     glPointSize(5);
 
 	gl_grid = gl_makegrid();
-	printf("gl_grid = %d\n", gl_grid);
     gl_channels = glGenLists(MAX_CHANNELS);
-	printf("gl_channels = %d\n", gl_channels);
     gl_math = glGenLists(1);
 	gl_cursor = glGenLists(2);
     glShadeModel(GL_SMOOTH/*GL_FLAT*/);
-    glLineStipple (1, 0x000F);
+    glLineStipple (1, 0x00FF);
 }
 
 void gl_resize(int w, int h)
@@ -82,7 +83,7 @@ void update_screen()
    	gettimeofday(&tv, 0);
 	unsigned int dmsec = 1000 * (tv.tv_sec - otime.tv_sec) + (tv.tv_usec - otime.tv_usec) / 1000;
 
-	if(dmsec < 1000.0 / 30)
+	if(dmsec < 1000.0 / 30)		// frame limiter
 		return;
 
 	otime = tv;
@@ -115,9 +116,9 @@ void update_screen()
 		glNewList(gl_channels + t, GL_COMPILE);
 		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
 		if(!t) {
-			glColor4f(0.0f, 1.0f, 0.0f, 0.5);
+			glColor4f(CHANNEL2_RGB, 0.5);
 		} else {
-			glColor4f(1.0f, 1.0f, 0.0f, 0.5);
+			glColor4f(CHANNEL1_RGB, 0.5);
 		}
 
 //		for (int i = trigger_point; i < my_buffer_size; i++) {
@@ -129,11 +130,8 @@ void update_screen()
 
 		int x = trigger_point;
 		for (int i = 0; i < my_buffer_size; i++, x++) {
-			if(x >= my_buffer_size) {
+			if(x >= my_buffer_size)
 				x = 0;
-//				glEnd();
-//				glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
-			}
 			glVertex2f(DIVS_TIME * ((float) i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 
@@ -151,7 +149,7 @@ void update_screen()
 			if(x >= my_buffer_size)
 				x = 0;
 			int v = (my_buffer[2*x] + my_buffer[2*x + 1] ) >> 1;
-			glVertex2f(DIVS_TIME * ((float)(i - trigger_point) / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_TIME * ((float)i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 //		for (int i = 0; i < trigger_point; i++) {
 //			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
@@ -232,7 +230,6 @@ void update_screen()
 
 }
 
-
 GLuint gl_makegrid()
 {
     GLuint list = glGenLists(1);
@@ -281,20 +278,6 @@ GLuint gl_makegrid()
 
     return list;
 }
-
-/*
-void GLBox::setTimeDiv(double div)
-{
-    timeDiv = div;
-    updateGL();
-}
-
-void GLBox::setTimeShift(double shift)
-{
-    timeShift = shift;
-    updateGL();
-}
-*/
 
 static void
 realize (GtkWidget *widget, gpointer   data)
@@ -408,8 +391,11 @@ void cursor_draw(int i)
 	struct cursor_coord *ac = &cursor[i];
 
 	glNewList(gl_cursor + i, GL_COMPILE);
+	if(i == 1)
+		glEnable(GL_LINE_STIPPLE);
 	glBegin(GL_LINE_STRIP);
-	glColor4f(0.0f, 1.0f, 0.6f, 0.8);
+
+	glColor4f(CHANNEL1_RGB, 0.8);
 
 	glVertex2f(ac->x, -DIVS_VOLTAGE / 2);
 	glVertex2f(ac->x, DIVS_VOLTAGE / 2);
@@ -420,7 +406,10 @@ void cursor_draw(int i)
 	glVertex2f(DIVS_TIME / 2, ac->y);
 
 	glEnd();
+	if(i == 1)
+		glDisable(GL_LINE_STIPPLE);
 	glEndList();
+
 }
 
 static

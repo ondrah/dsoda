@@ -22,6 +22,10 @@ void *dso_thread(void *ptr)
 				return 0;
 		}
 
+		if(dso_fl_single_sample) {
+			dso_thread_pause();
+		}
+
 		//DMSG("period = %d\n", dso_period_usec);
 
 		dso_capture_start();
@@ -30,6 +34,7 @@ void *dso_thread(void *ptr)
 
 		int fl_complete = 0;
         int trPoint = 0;
+		int nr_empty = 0;
 
 		while(!fl_complete) {
 			int cs = dso_get_capture_state(&trPoint);
@@ -40,6 +45,11 @@ void *dso_thread(void *ptr)
 
 			switch(cs) {
 				case 0:	// empty
+					if(nr_empty == 3) {
+						dso_capture_start();
+						nr_empty = 0;
+					}
+					nr_empty++;
 					dso_trigger_enabled();
 					//dso_force_trigger();
 					usleep(dso_period_usec);

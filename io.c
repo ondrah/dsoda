@@ -331,7 +331,7 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	}
 
 	ts = triggerSlope == SLOPE_PLUS ? 0x0 : 0x8;
-	bs = bufferSize == 10240 ? 0x06 : 0x0A;
+	bs = bufferSize == 10240 ? 0x06 : 0x0A;		// short buffer 0x02
 
     u8 c[12];
 	c[0] = C_CONFIGURE;

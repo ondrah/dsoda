@@ -31,11 +31,12 @@ static int fl_running = 0;
 static int voltage_ch[2] = { VOLTAGE_5V, VOLTAGE_5V };
 static int trigger_slope = SLOPE_PLUS;
 static int trigger_source = TRIGGER_CH1;
-static int trigger_position = COMPUTE_TRIGGER_POSITION(0.5);
+static int trigger_position;
 static int selected_channels = SELECT_CH1CH2;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
-static int offset_ch1 = 0xb9, offset_ch2 = 0x89, offset_t = 0x99;
+//static float offset_ch1 = 0xb9, offset_ch2 = 0x89, offset_t = 0x99;
+static float offset_ch1 = 0.8, offset_ch2 = 0.4, offset_t = 0.7, position_t = 0.5;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
@@ -80,51 +81,55 @@ static int nr_attenuations[] = { 1, 10 };
 static int buffer_size_idx = 0, sampling_rate_idx = 5;
 #define COMPUTE_PERIOD_USEC	(1000000 / nr_sampling_rates[sampling_rate_idx] * nr_buffer_sizes[buffer_size_idx])
 volatile unsigned int dso_period_usec;
+volatile int dso_fl_single_sample;
 
 static GtkWidget *display_area;
 static GtkWidget *box;
-static GtkWidget *time_per_window, *set_srate, *set_bsize, *run_button;
+static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
 
 #define VOID_PTR(a)		((void *)a)
 
 static
-void run_clicked()
+void start_clicked()
 {
-	int state = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(run_button));
-	if(state) {
-		DMSG("running capture\n");
-		gtk_button_set_label(GTK_BUTTON(run_button), "Stop");
-		fl_running = 1;	// start updating the screen
+	if(!dso_initialized)
+		return;
 
-		if(dso_initialized) {
-			dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-			dso_set_filter(reject_hf);
-			dso_trigger_enabled();
-			dso_thread_resume();
-		}
-	} else {
-		DMSG("stopping capture\n");
-		gtk_button_set_label(GTK_BUTTON(run_button), "Run");
-		fl_running = 0;
+	DMSG("running capture\n");
+	fl_running = 1;	// start updating the screen, FIXME
 
-		if(dso_initialized)
-			dso_thread_pause();
-	}
+	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	dso_set_filter(reject_hf);
+	dso_thread_resume();
 }
 
 static
-void log_clicked()
+void stop_clicked()
 {
-	DMSG("not implemented\n");
+	if(dso_fl_single_sample)
+		return;
+
+	DMSG("stopping capture\n");
+	fl_running = 0;
+
+	if(dso_initialized)
+		dso_thread_pause();
+}
+
+static
+void single_clicked(GtkWidget *w)
+{
+	dso_fl_single_sample = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w));
+	gtk_widget_set_sensitive(stop_button, !dso_fl_single_sample);
 }
 
 static void
 update_offset()
 {
 	int ro_ch1, ro_ch2, ro_t;	// real offsets
-	ro_ch1 = (offset_ranges.channel[0][voltage_ch[0]][1] - offset_ranges.channel[0][voltage_ch[0]][0]) * offset_ch1/256.0 + offset_ranges.channel[0][voltage_ch[0]][0];
-	ro_ch2 = (offset_ranges.channel[1][voltage_ch[1]][1] - offset_ranges.channel[1][voltage_ch[1]][0]) * offset_ch2/256.0 + offset_ranges.channel[1][voltage_ch[1]][0];
-	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t / 256.0 + offset_ranges.trigger[0];
+	ro_ch1 = (offset_ranges.channel[0][voltage_ch[0]][1] - offset_ranges.channel[0][voltage_ch[0]][0]) * offset_ch1 + offset_ranges.channel[0][voltage_ch[0]][0];
+	ro_ch2 = (offset_ranges.channel[1][voltage_ch[1]][1] - offset_ranges.channel[1][voltage_ch[1]][0]) * offset_ch2 + offset_ranges.channel[1][voltage_ch[1]][0];
+	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t + offset_ranges.trigger[0];
 
 	//OFFSET_T = ro_t;
 
@@ -320,7 +325,7 @@ void gui_about()
 	gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dialog), APPNAME);
 	gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), "0.1"); 
 	gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dialog), "(c) ond");
-	gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dialog), APPNAME " is a simple frontend for Hantek oscilloscopes with data logging capability.");
+	gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dialog), APPNAME " is a simple frontend for the \"DSO-2250 USB\".");
 	gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(dialog), DSODA_URL);
 	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(ICON_FILE, NULL);
 	gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(dialog), pixbuf);
@@ -384,8 +389,8 @@ gint update_gui_cb()
 	int i;
 	read(p[0], &i, sizeof(i));
 
-	if(!fl_running)
-		return RETVAL;
+//	if(!fl_running)
+//		return RETVAL;
 
 	if(!dso_buffer_dirty)
 		return RETVAL;
@@ -445,7 +450,7 @@ void dso_update_gui()
 static
 void load_file_cb()
 {
-	printf("opening file\n");
+	//DMSG("opening file\n");
 
 	GtkWidget *gw = gtk_file_chooser_dialog_new("Open log file",
 		//	GTK_WINDOW(window),
@@ -471,6 +476,56 @@ void load_file_cb()
 static
 void save_file_cb()
 {
+	GtkWidget *gw = gtk_file_chooser_dialog_new("Save current buffer",
+		//	GTK_WINDOW(window),
+			NULL,
+			GTK_FILE_CHOOSER_ACTION_SAVE, 
+			GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+			GTK_STOCK_OK, GTK_RESPONSE_OK,
+			NULL);
+
+	gtk_dialog_run(GTK_DIALOG (gw));
+
+	gchar *fname = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gw));
+	gtk_widget_destroy(gw);
+
+	if(!fname) {
+		DMSG("no file chosen\n");
+		return;
+	}
+
+	DMSG("saving '%s'..\n", fname);
+
+	struct stat st;
+	if(!stat(fname, &st)) {
+		GtkWidget *yn = gtk_message_dialog_new(0, GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_OK_CANCEL,
+				"File %s already exists. Overwrite?", fname);
+		int r = gtk_dialog_run(GTK_DIALOG(yn));
+		gtk_widget_destroy(yn);
+
+		if(r != GTK_RESPONSE_OK)
+			return;
+	}
+
+	FILE *f;
+	if(!(f = fopen(fname, "w"))) {
+		DMSG("failed opening file for writing\n");
+		return;
+	}
+	g_free(fname);
+
+	fprintf(f,
+			"# nr_samples = %d\n"
+			"# speed = %s\n",
+			my_buffer_size,
+			str_sampling_rates[sampling_rate_idx]
+			);
+//	int c1d = offset_ranges[0][voltage_ch[0]][1] - offset_ranges[0][voltage_ch[0]][0];
+//	int c2d = offset_ranges[1][voltage_ch[1]][1] - offset_ranges[1][voltage_ch[1]][0];
+	for(int i = 0; i < my_buffer_size; i++) {
+		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch1) / 32.0, (my_buffer[2*i] - offset_ch2) / 32.0);
+	}
+	fclose(f);
 }
 
 static void
@@ -528,18 +583,14 @@ scale_configure(GtkScale *scale)
 static void
 offset_ch1_cb(GtkAdjustment *adj)
 {
-	int nval = 0xff - adj->value;
-	DMSG("ch1 adjusted, 0x%x\n", nval);
-	offset_ch1 = nval;
+	offset_ch1 = 1 - adj->value;
 	update_offset();
 }
 
 static void
 offset_ch2_cb(GtkAdjustment *adj)
 {
-	int nval = 0xff - adj->value;
-	DMSG("ch2 adjusted, 0x%x\n", nval);
-	offset_ch2 = nval;
+	offset_ch2 = 1 - adj->value;
 	update_offset();
 }
 
@@ -547,8 +598,7 @@ offset_ch2_cb(GtkAdjustment *adj)
 static void
 offset_t_cb(GtkAdjustment *adj)
 {
-	int nval = 0xff - adj->value;
-	DMSG("t adjusted, 0x%x\n", nval);
+	int nval = 1 - adj->value;
 	offset_t = nval;
 	update_offset();
 }
@@ -558,6 +608,7 @@ position_t_cb(GtkAdjustment *adj)
 {
 	float nval = adj->value;
 
+	position_t = nval;
 	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
 	DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
@@ -590,10 +641,10 @@ GtkWidget *create_display_window()
    gtk_box_pack_start (GTK_BOX (box1), gtk_hseparator_new (), FALSE, FALSE, 0);
 
 // channel levels, trigger level, trigger position, display area
-	GtkObject *lev_ch1 = gtk_adjustment_new(offset_ch1, 0.0, 0xff, 0, 0, 0);
-	GtkObject *lev_ch2 = gtk_adjustment_new(offset_ch2, 0.0, 0xff, 0, 0, 0);
-	GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 0xff, 0, 0, 0);
-	GtkObject *pos_t = gtk_adjustment_new(0.5, 0.0, 1.0, 0, 0, 0);
+	GtkObject *lev_ch1 = gtk_adjustment_new(1-offset_ch1, 0.0, 1.0, 0, 0, 0);
+	GtkObject *lev_ch2 = gtk_adjustment_new(1-offset_ch2, 0.0, 1.0, 0, 0, 0);
+	GtkObject *lev_t = gtk_adjustment_new(1-offset_t, 0.0, 1.0, 0, 0, 0);
+	GtkObject *pos_t = gtk_adjustment_new(position_t, 0.0, 1.0, 0, 0, 0);
     GtkWidget *scale_ch1 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch1));
     GtkWidget *scale_ch2 = gtk_vscale_new(GTK_ADJUSTMENT(lev_ch2));
     GtkWidget *scale_t = gtk_vscale_new(GTK_ADJUSTMENT(lev_t));
@@ -726,23 +777,27 @@ create_control_window(int x, int y)
 	g_signal_connect(GTK_OBJECT(b_math), "toggled", G_CALLBACK(math_cb), 0);
 	gtk_box_pack_start(GTK_BOX(box2), b_math, TRUE, TRUE, 0);
 
-   gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
-   gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
+	gtk_box_pack_start (GTK_BOX (box2), settings_box, TRUE, TRUE, 0);
+	gtk_box_pack_start (GTK_BOX (box2), control_box, TRUE, TRUE, 0);
 
-   run_button = gtk_toggle_button_new_with_label ("Run");
-   g_signal_connect_swapped (GTK_OBJECT (run_button), "toggled",
-			     G_CALLBACK (run_clicked),
-			     GTK_OBJECT (box));
-   gtk_box_pack_start (GTK_BOX (control_box), run_button, TRUE, TRUE, 0);
+	GtkWidget *start_button = gtk_button_new_with_label("Start");
+	g_signal_connect(GTK_OBJECT(start_button), "pressed", G_CALLBACK(start_clicked), 0);
 
-   GtkWidget *log_button = gtk_check_button_new_with_label("log");
-   g_signal_connect_swapped (GTK_OBJECT (log_button), "toggled",
-			     G_CALLBACK (log_clicked),
-			     GTK_OBJECT (box));
-   gtk_box_pack_start (GTK_BOX(control_box), log_button, TRUE, TRUE, 0);
+	stop_button = gtk_button_new_with_label("Stop");
+	g_signal_connect(GTK_OBJECT(stop_button), "pressed", G_CALLBACK(stop_clicked), 0);
 
-   GTK_WIDGET_SET_FLAGS (run_button, GTK_CAN_DEFAULT);
-   gtk_widget_grab_default (run_button);
+	GtkWidget *nh = gtk_hbox_new(TRUE, 5);
+	gtk_box_pack_start(GTK_BOX(nh), start_button, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(nh), stop_button, TRUE, TRUE, 0);
+
+	GtkWidget *single_button = gtk_check_button_new_with_label("single");
+	g_signal_connect(GTK_OBJECT(single_button), "toggled", G_CALLBACK(single_clicked), 0);
+
+	gtk_box_pack_start(GTK_BOX(control_box), nh, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(control_box), single_button, TRUE, TRUE, 0);
+
+	GTK_WIDGET_SET_FLAGS(start_button, GTK_CAN_DEFAULT);
+	gtk_widget_grab_default(nh);
 	gtk_widget_show_all(w);
 
 	return w;
@@ -847,6 +902,7 @@ main (gint argc, char *argv[])
 
 	update_time_per_window();
 
+	trigger_position = COMPUTE_TRIGGER_POSITION(position_t);
 	if(!dso_initialized) {
 		simul_generate();
 		g_timeout_add(1000 / 30, simul_dso, 0);
