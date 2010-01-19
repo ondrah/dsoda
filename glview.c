@@ -6,11 +6,17 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
+#include <gdk/gdkkeysyms.h>
+
 #include "io.h"
 #include "local.h"
 
+static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
-int gl_channels, gl_grid, gl_math, gl_cursor;
+static int gl_channels, gl_grid, gl_math, gl_cursor;
+static int fl_pan = 0, fl_pan_ready = 0;
+static float zoom_factor = 1, pan_x = 0, pan_y = 0;
+static float press_x, press_y;
 
 struct cursor_coord {
 	float x, y;
@@ -284,6 +290,7 @@ realize (GtkWidget *widget, gpointer   data)
 {
 	//DMSG("realize\n");
 	gl_init();
+	gdk_window_set_cursor(widget->window, cursor_cross);
 }
 
 static gboolean
@@ -379,10 +386,10 @@ int display_init(int *pargc, char ***pargv)
 }
 
 static
-void cursor_get_coords(struct cursor_coord *cc, GtkWidget *w, GdkEventMotion *e)
+void convert_coords(float *dx, float *dy, GtkWidget *w, float cx, float cy)
 {
-	cc->x = DIVS_TIME * e->x / w->allocation.width - DIVS_TIME / 2;
-	cc->y = -(DIVS_VOLTAGE * e->y / w->allocation.height - DIVS_VOLTAGE / 2);
+	*dx = DIVS_TIME * cx / w->allocation.width - DIVS_TIME / 2;
+	*dy = -(DIVS_VOLTAGE * cy / w->allocation.height - DIVS_VOLTAGE / 2);
 }
 
 static
@@ -397,13 +404,13 @@ void cursor_draw(int i)
 
 	glColor4f(CHANNEL1_RGB, 0.8);
 
-	glVertex2f(ac->x, -DIVS_VOLTAGE / 2);
-	glVertex2f(ac->x, DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor, -DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor, DIVS_VOLTAGE / 2);
 	glEnd();
 
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_TIME / 2, ac->y);
-	glVertex2f(DIVS_TIME / 2, ac->y);
+	glVertex2f(-DIVS_TIME / 2, ac->y * zoom_factor);
+	glVertex2f(DIVS_TIME / 2, ac->y * zoom_factor);
 
 	glEnd();
 	if(i == 1)
@@ -413,39 +420,120 @@ void cursor_draw(int i)
 }
 
 static
+void rezoom()
+{
+	glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
+	glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+}
+
+static
 gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 {
 	//DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
-	if(!cursor_active)
-		return FALSE;
 
 	if(w->allocation.width < 0 || w->allocation.height < 0)
 		return FALSE;
 
-	cursor_get_coords(&cursor[1], w, e);
-	cursor_draw(1);
+	if(fl_pan) {
+		float mx;
+		float my;
+		convert_coords(&mx, &my, w, e->x, e->y);
+		pan_x += (press_x - mx); // zoom_factor;
+		pan_y += (press_y - my); // zoom_factor;
+		press_x = mx;
+		press_y = my;
+
+		pan_x = MAX(pan_x, -DIVS_TIME / 2 / zoom_factor);
+		pan_x = MIN(pan_x, +DIVS_TIME / 2 / zoom_factor);
+		pan_y = MAX(pan_y, -DIVS_VOLTAGE / 2 / zoom_factor);
+		pan_y = MIN(pan_y, +DIVS_VOLTAGE / 2 / zoom_factor);
+
+		rezoom();
+	}
+
+	if(cursor_active) {
+		convert_coords(&cursor[1].x, &cursor[1].y, w, e->x, e->y);
+		cursor_draw(1);
+	}
 
 	return FALSE;
 }
 
 static
-gboolean mouse_button_press_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
+	//DMSG("type = %d\n", e->type);
+
+	if(fl_pan_ready) {
+		fl_pan = 1;
+		convert_coords(&press_x, &press_y, w, e->x, e->y);
+		return FALSE;
+	}
+
 	cursor_active = 1;
-	cursor_get_coords(&cursor[0], w, e);
+	convert_coords(&cursor[0].x, &cursor[0].y, w, e->x, e->y);
 	cursor_draw(0);
 
 	return FALSE;
 }
 
 static
-gboolean mouse_button_release_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
+gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
-	cursor_active = 0;
+	if(cursor_active) {
+		cursor_active = 0;
+		return FALSE;
+	}
+	
+	fl_pan = 0;
 	return FALSE;
 }
 
-GtkWidget *display_create_widget()
+static
+gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
+{
+	if(e->direction > 0) {
+		DMSG("-\n");
+		zoom_factor *= 2;
+		if(zoom_factor > 2)
+			zoom_factor = 2;
+	} else {
+		DMSG("+\n");
+		zoom_factor /= 2;
+		if(zoom_factor < 0.005)
+			zoom_factor = 0.005;
+	}
+
+	rezoom();
+	return FALSE;
+}
+
+static
+gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
+{
+	if(e->keyval == GDK_Shift_L) {
+		fl_pan_ready = 1;
+		gdk_window_set_cursor(w->window, cursor_hand);
+	}
+
+	return FALSE;
+}
+
+static
+gboolean key_release_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
+{
+	if(e->keyval == GDK_Shift_L) {
+		fl_pan_ready = 0;
+		gdk_window_set_cursor(w->window, cursor_cross);
+	}
+
+	return FALSE;
+}
+
+GtkWidget *display_create_widget(GtkWidget *parent)
 {
 	GtkWidget *drawing_area = gtk_drawing_area_new ();
 	gtk_widget_set_size_request (drawing_area, 320, 240);
@@ -460,7 +548,10 @@ GtkWidget *display_create_widget()
 	gtk_widget_add_events(drawing_area,
 			GDK_POINTER_MOTION_MASK |
 			GDK_BUTTON_PRESS_MASK |
-			GDK_BUTTON_RELEASE_MASK
+			GDK_BUTTON_RELEASE_MASK | 
+			GDK_SCROLL_MASK |
+			GDK_KEY_PRESS_MASK | 
+			GDK_KEY_RELEASE_MASK
 
 	//		GDK_VISIBILITY_NOTIFY_MASK
 			);
@@ -468,9 +559,15 @@ GtkWidget *display_create_widget()
 	g_signal_connect(G_OBJECT(drawing_area), "motion_notify_event", G_CALLBACK(mouse_motion_cb), 0);
 	g_signal_connect(G_OBJECT(drawing_area), "button_press_event", G_CALLBACK(mouse_button_press_cb), 0);
 	g_signal_connect(G_OBJECT(drawing_area), "button_release_event", G_CALLBACK(mouse_button_release_cb), 0);
+	g_signal_connect(G_OBJECT(drawing_area), "scroll_event", G_CALLBACK(scroll_cb), 0);
+	g_signal_connect_swapped(G_OBJECT(parent), "key_press_event", G_CALLBACK(key_press_cb), drawing_area);
+	g_signal_connect_swapped(G_OBJECT(parent), "key_release_event", G_CALLBACK(key_release_cb), drawing_area);
 
 	gtk_widget_show (drawing_area);
 	//gtk_timeout_add(1000 / 24, update_timer_cb, 0);
+
+	cursor_cross = gdk_cursor_new(GDK_CROSSHAIR);
+	cursor_hand = gdk_cursor_new(GDK_HAND1);
 
 	return drawing_area;
 }
@@ -478,4 +575,6 @@ GtkWidget *display_create_widget()
 void display_done()
 {
 	gl_done();
+//	gdk_cursor_unref(cursor_cross);
+//	gdk_cursor_unref(cursor_hand);
 }

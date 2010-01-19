@@ -81,7 +81,7 @@ static int nr_attenuations[] = { 1, 10 };
 static int buffer_size_idx = 0, sampling_rate_idx = 5;
 #define COMPUTE_PERIOD_USEC	(1000000 / nr_sampling_rates[sampling_rate_idx] * nr_buffer_sizes[buffer_size_idx])
 volatile unsigned int dso_period_usec;
-volatile int dso_fl_single_sample;
+volatile int dso_trigger_mode = TRIGGER_AUTO;
 
 static GtkWidget *display_area;
 static GtkWidget *box;
@@ -106,7 +106,7 @@ void start_clicked()
 static
 void stop_clicked()
 {
-	if(dso_fl_single_sample)
+	if(dso_trigger_mode == TRIGGER_SINGLE)	// should not happen anyway
 		return;
 
 	DMSG("stopping capture\n");
@@ -117,10 +117,12 @@ void stop_clicked()
 }
 
 static
-void single_clicked(GtkWidget *w)
+void trigger_mode_cb(GtkWidget *w)
 {
-	dso_fl_single_sample = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w));
-	gtk_widget_set_sensitive(stop_button, !dso_fl_single_sample);
+	int nval = gtk_combo_box_get_active(GTK_COMBO_BOX(w));
+
+	dso_trigger_mode = nval;
+	gtk_widget_set_sensitive(stop_button, !(dso_trigger_mode == TRIGGER_SINGLE));
 }
 
 static void
@@ -658,7 +660,7 @@ GtkWidget *create_display_window()
 	g_signal_connect(G_OBJECT(lev_t), "value_changed", G_CALLBACK(offset_t_cb), 0);
 	g_signal_connect(G_OBJECT(pos_t), "value_changed", G_CALLBACK(position_t_cb), 0);
 
-	display_area = display_create_widget();
+	display_area = display_create_widget(w);
 
 	// scale + graph table (display panel)
 	GtkWidget *dp = gtk_table_new(3, 2, FALSE);
@@ -682,8 +684,6 @@ GtkWidget *create_display_window()
 	gtk_box_pack_start(GTK_BOX(box1), dp, TRUE, TRUE, 0);
 
 	gtk_widget_show_all(w);
-
-	gdk_window_set_cursor(display_area->window, gdk_cursor_new(GDK_CROSS));
 
 	return w;
 }
@@ -790,11 +790,17 @@ create_control_window(int x, int y)
 	gtk_box_pack_start(GTK_BOX(nh), start_button, TRUE, TRUE, 0);
 	gtk_box_pack_start(GTK_BOX(nh), stop_button, TRUE, TRUE, 0);
 
-	GtkWidget *single_button = gtk_check_button_new_with_label("single");
-	g_signal_connect(GTK_OBJECT(single_button), "toggled", G_CALLBACK(single_clicked), 0);
+	GtkWidget *c_trigger_mode = gtk_combo_box_new_text();
+
+	char *str_trigger_modes[] = {"Auto", "Normal", "Single"};
+	for(int i=0;i<SCALAR(str_trigger_modes);i++)
+		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_trigger_mode), i, str_trigger_modes[i]);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(c_trigger_mode), dso_trigger_mode);
+
+	g_signal_connect(G_OBJECT(c_trigger_mode), "changed", G_CALLBACK(trigger_mode_cb), 0);
 
 	gtk_box_pack_start(GTK_BOX(control_box), nh, TRUE, TRUE, 0);
-	gtk_box_pack_start(GTK_BOX(control_box), single_button, TRUE, TRUE, 0);
+	gtk_box_pack_start(GTK_BOX(control_box), c_trigger_mode, FALSE, FALSE, 0);
 
 	GTK_WIDGET_SET_FLAGS(start_button, GTK_CAN_DEFAULT);
 	gtk_widget_grab_default(nh);
@@ -850,11 +856,8 @@ void create_windows()
 	create_math_window();
 }
 
-int calData = -3;
-//struct offset_ranges offset_ranges;
-
 gint
-main (gint argc, char *argv[])
+main(gint argc, char *argv[])
 {
 	gtk_init(&argc, &argv);
 	display_init(&argc, &argv);

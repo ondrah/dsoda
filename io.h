@@ -166,7 +166,13 @@ void dso_update_gui();
 
 extern pthread_mutex_t buffer_mutex;
 extern volatile unsigned int dso_period_usec;
-extern volatile int dso_fl_single_sample;
+extern volatile int dso_trigger_mode;
 extern int dso_initialized;
+
+enum {
+	TRIGGER_AUTO,
+	TRIGGER_NORMAL,
+	TRIGGER_SINGLE,
+};
 
 #endif

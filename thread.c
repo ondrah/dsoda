@@ -22,7 +22,7 @@ void *dso_thread(void *ptr)
 				return 0;
 		}
 
-		if(dso_fl_single_sample) {
+		if(dso_trigger_mode == TRIGGER_SINGLE) {
 			dso_thread_pause();
 		}
 
@@ -51,7 +51,8 @@ void *dso_thread(void *ptr)
 					}
 					nr_empty++;
 					dso_trigger_enabled();
-					//dso_force_trigger();
+					if(dso_trigger_mode != TRIGGER_NORMAL)	// force trigger for single and auto
+						dso_force_trigger();
 					usleep(dso_period_usec);
 					break;
 
