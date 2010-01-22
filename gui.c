@@ -35,7 +35,6 @@ static int trigger_position;
 static int selected_channels = SELECT_CH1CH2;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
-//static float offset_ch1 = 0xb9, offset_ch2 = 0x89, offset_t = 0x99;
 static float offset_ch1 = 0.8, offset_ch2 = 0.4, offset_t = 0.7, position_t = 0.5;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
@@ -875,8 +874,8 @@ main(gint argc, char *argv[])
 	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
 
 	if(!fl_noinit && dso_initialized) {
-		int da;
-		dso_get_device_address(&da);
+	//	int da;
+	//	dso_get_device_address(&da);
 
 		dso_get_offsets(&offset_ranges);
 		for(int i=0; i<2; i++) {
@@ -919,6 +918,9 @@ main(gint argc, char *argv[])
 
 	close(p[0]);
 	close(p[1]);
+
+	if(dso_initialized)
+		dso_thread_terminate();
 
 	return 0;
 }

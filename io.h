@@ -3,38 +3,37 @@
 
 #include <pthread.h>
 
-#define EP_BULK_OUT 2   // Endpoint for sending commands to DSO
-#define EP_BULK_IN  6   // Endpoint for reading data from DSO
+#define DEVICE_VENDOR 0x04b5
+#define EP_BULK_OUT 2
+#define EP_BULK_IN  6
 
-#define	C_SET_FILTER	0x00
-#define C_CONFIGURE		0x01
-#define	C_FORCE_TRIGGER	0x02
-#define C_CAPTURE_START	0x03
-#define C_TRIGGER_ENABLED	0x04
-#define C_CAPTURE_GET_DATA	0x05
-#define C_CAPTURE_GET_STATE	0x06
-#define C_SET_VOLTAGE	0x07
-#define C_LOGICAL_DATA_SET	0x08
-#define C_LOGICAL_DATA_GET	0x09
+#define	B_SET_FILTER	0x00
+#define B_CONFIGURE		0x01
+#define	B_FORCE_TRIGGER	0x02
+#define B_CAPTURE_START	0x03
+#define B_TRIGGER_ENABLED	0x04
+#define B_CAPTURE_GET_DATA	0x05
+#define B_CAPTURE_GET_STATE	0x06
+#define B_SET_VOLTAGE	0x07
+#define B_LOGICAL_DATA_SET	0x08
+#define B_LOGICAL_DATA_GET	0x09
 
-#define CONTROL_COMMAND	0xA2
-#define CONTROL_GETSPEED	0xB2
-#define CONTROL_BEGINCOMMAND	0xB3
-#define CONTROL_SETOFFSET	0xB4
-#define CONTROL_SETRELAYS	0xB5
+#define C_COMMAND	0xA2
+#define C_GETSPEED	0xB2
+#define C_BEGINCOMMAND	0xB3
+#define C_SETOFFSET	0xB4
+#define C_SETRELAYS	0xB5
 
-enum control_values
-{
+#define COUPLING_AC	0
+#define COUPLING_DC	1
+
+enum {
     VALUE_CHANNELLEVEL = 0x08,
     VALUE_DEVICEADDRESS = 0x0A,
     VALUE_CALDATA = 0x60
 };
 
-#define COUPLING_AC	0
-#define COUPLING_DC	1
-
-enum selected_channels
-{
+enum {
     SELECT_CH1 = 0,
     SELECT_CH2,
     SELECT_CH1CH2
@@ -63,72 +62,11 @@ enum {
 #define	SLOPE_PLUS	0
 #define	SLOPE_MINUS 1
 
-enum level_offsets
-{
-    OFFSET_START = 0,
-    OFFSET_END
-};
-
-struct filter_bits
-{
-    unsigned char channel1:1;
-    unsigned char channel2:1;
-    unsigned char trigger:1;
-    unsigned char reserved:5;
-};
-
-union filter_byte
-{
-    struct filter_bits bits;
-    unsigned char byte;
-};
-
-struct voltage_bits
-{
-    unsigned char channel1:2;
-    unsigned char channel2:2;
-    unsigned char constant:4;
-};
-
-union voltage_byte
-{
-    struct voltage_bits bits;
-    unsigned char byte;
-};
-
-struct tsr_bits1
-{
-    unsigned char triggerSource:2;
-    unsigned char sampleSize:3;
-    unsigned char timeBaseFast:3;
-};
-
-union tsr_byte1
-{
-    struct tsr_bits1 bits;
-    unsigned char byte;
-};
-
-struct tsr_bits2
-{
-    unsigned char selectedChannel:2;
-    unsigned char fastRatesChannel:1;
-    unsigned char triggerSlope:1;
-    unsigned char reserved:4;
-};
-
-union tsr_byte2
-{
-    struct tsr_bits2 bits;
-    unsigned char byte;
-};
-
 struct offset_ranges {
 	unsigned short channel[2][9][2];		// [channel][voltage][low; high]
 	unsigned char trigger[2];	// [low; high]
 } __attribute__((__packed__));
 
-#define DEVICE_VENDOR 0x04b5
 
 extern unsigned char *dso_buffer;
 extern unsigned char *my_buffer;
@@ -170,7 +108,7 @@ extern volatile int dso_trigger_mode;
 extern int dso_initialized;
 
 enum {
-	TRIGGER_AUTO,
+	TRIGGER_AUTO = 0,
 	TRIGGER_NORMAL,
 	TRIGGER_SINGLE,
 };

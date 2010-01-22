@@ -17,6 +17,7 @@ static int gl_channels, gl_grid, gl_math, gl_cursor;
 static int fl_pan = 0, fl_pan_ready = 0;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
+static int x_factor = 1;
 
 struct cursor_coord {
 	float x, y;
@@ -404,8 +405,8 @@ void cursor_draw(int i)
 
 	glColor4f(CHANNEL1_RGB, 0.8);
 
-	glVertex2f(ac->x * zoom_factor, -DIVS_VOLTAGE / 2);
-	glVertex2f(ac->x * zoom_factor, DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor, -DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor, DIVS_VOLTAGE / 2);
 	glEnd();
 
 	glBegin(GL_LINES);
@@ -424,7 +425,7 @@ void rezoom()
 {
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
+    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 }
@@ -514,9 +515,28 @@ gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 static
 gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
-	if(e->keyval == GDK_Shift_L) {
-		fl_pan_ready = 1;
-		gdk_window_set_cursor(w->window, cursor_hand);
+	switch(e->keyval) {
+		case GDK_Z:
+			if(x_factor > 1) {
+				x_factor--;
+				rezoom();
+				update_screen();
+			}
+			break;
+		case GDK_X:
+			x_factor++;
+			rezoom();
+			update_screen();
+			break;
+		case GDK_Shift_L:
+			fl_pan_ready = 1;
+			gdk_window_set_cursor(w->window, cursor_hand);
+			break;
+		case GDK_Escape:
+			pan_x = pan_y = 0;
+			zoom_factor = 1;
+			update_screen();
+			break;
 	}
 
 	return FALSE;

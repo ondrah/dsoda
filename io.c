@@ -218,34 +218,21 @@ int dso_read_control(unsigned char request, void *buffer, int len, int value, in
 	return rv;
 }
 
-/*!
-    \fn HantekDSOIO::getConnectionSpeed()
- */
-/**
- * 
- * @return 0 - FullSpeed, 1 - HighSpeed
- */
-int dso_get_connection_speed()
-{
-    unsigned char buffer[10];
-    int rv = dso_read_control(CONTROL_GETSPEED, buffer, sizeof(buffer), 0, 0);
-    if (rv < 0) {
-        return rv;
-    }
-
-    return (int)buffer[0];
-}
-
 int dso_begin_command()
 {
+	int ret;
     unsigned char c[10] = { 0x0F, 0x03, 0x03, 0x03, 0xec, 0xfc, 0xf4, 0x00, 0xec, 0xfc};
+    if((ret = dso_write_control(C_BEGINCOMMAND, c, sizeof(c), 0, 0)) < 0) {
+		DMSG("dso_write_control failed\n");
+		return ret;
+	}
 
-    int rv = dso_write_control(CONTROL_BEGINCOMMAND, c, sizeof(c), 0, 0);
-    if (rv >= 0)
-		return 0;
+    if((ret = dso_read_control(C_GETSPEED, c, sizeof(c), 0, 0)) < 0) {
+		DMSG("dso_read_control failed\n");
+		return ret;
+    }
 
-	DMSG("dso_write_control failed\n");
-	return rv;
+	return 0;
 }
 
 /*!
@@ -260,13 +247,7 @@ int dso_set_filter(int hf_reject)
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[8] = {C_SET_FILTER, 0x0F, 0, 0, 0, 0, 0, 0};
+    unsigned char command[8] = {B_SET_FILTER, 0x0F, 0, 0, 0, 0, 0, 0};
     command[2] = hf_reject ? 0x04 : 0x00;
 
     rv = dso_write_bulk(command, sizeof(command));
@@ -311,12 +292,6 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
-
 	int sc, ts, bs;
 	switch(selectedChannel) {
 		case SELECT_CH1:
@@ -334,7 +309,7 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	bs = bufferSize == 10240 ? 0x06 : 0x0A;		// short buffer 0x02
 
     u8 c[12];
-	c[0] = C_CONFIGURE;
+	c[0] = B_CONFIGURE;
 	c[1] = 0x00;
 	c[2] = sampling_speed[my_speed][0] | bs;
 	c[3] = sc | ts;
@@ -373,14 +348,7 @@ int dso_force_trigger()
 		return -1;
     }
 
-    int rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_FORCE_TRIGGER, 0};
+    unsigned char command[2] = {B_FORCE_TRIGGER, 0};
     if(dso_write_bulk(command, sizeof(command)) < 0) {
         DMSG("In function %s", __FUNCTION__);
 		dso_unlock();
@@ -399,14 +367,7 @@ int dso_capture_start()
 		return -1;
     }
 
-    int rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_CAPTURE_START, 0};
+    unsigned char command[2] = {B_CAPTURE_START, 0};
     if (dso_write_bulk(command, sizeof(command)) < 0) {
 		dso_unlock();
 		return -1;
@@ -433,14 +394,7 @@ int dso_trigger_enabled()
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_TRIGGER_ENABLED, 0};
+    unsigned char command[2] = {B_TRIGGER_ENABLED, 0};
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0)
     {
@@ -467,14 +421,7 @@ int dso_get_channel_data(void *buffer, int bufferSize)
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_CAPTURE_GET_DATA, 0};
+    unsigned char command[2] = {B_CAPTURE_GET_DATA, 0};
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0) {
 		DMSG("write error\n");
@@ -482,11 +429,11 @@ int dso_get_channel_data(void *buffer, int bufferSize)
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
+//    rv = dso_get_connection_speed();
+//    if (rv < 0) {
+//        dso_unlock();
+//        return rv;
+//    }
 
     int packets = 2 * bufferSize / epInMaxPacketLen;
 //    DMSG("Getting %i packets (%i bytes length), buffer len = %i bytes", packets, epInMaxPacketLen, bufferSize);
@@ -514,23 +461,18 @@ int dso_get_capture_state(int *tp)
         return -1;
     }
 
-    int rv = dso_get_connection_speed();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_CAPTURE_GET_STATE, 0};
+    unsigned char command[2] = {B_CAPTURE_GET_STATE, 0};
     if (dso_write_bulk(command, sizeof(command)) < 0) {
 		dso_unlock();
 		return -1;
     }
 
+	/*
 	rv = dso_get_connection_speed();
     if (rv < 0) {
         dso_unlock();
         return rv;
-    }
+    }*/
 
     unsigned char temp[epInMaxPacketLen];
 
@@ -547,9 +489,6 @@ int dso_get_capture_state(int *tp)
     return temp[0];
 }
 
-/*!
-    \fn HantekDSOIO::dsoSetVoltageAndCoupling(int ch1Voltage, int ch2Voltage, int ch1Coupling, int ch2Coupling, int triggerSource)
- */
 int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_ch1, int coupling_ch2, int trigger)
 {
 	const u8 voltages[][2][2] = {
@@ -565,13 +504,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
         return rv;
     }
 
-    rv = dso_get_connection_speed();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[8] = {C_SET_VOLTAGE, 0, 0, 0, 0, 0, 0, 11};
+    unsigned char command[8] = {B_SET_VOLTAGE, 0, 0, 0, 0, 0, 0, 11};
 
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0) {
@@ -593,7 +526,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
 	c[8] = c[9] = c[10] = c[11] = c[12] = c[13] = c[14] = c[15] = c[16] = 0;
 
-    if(dso_write_control(CONTROL_SETRELAYS, c, sizeof(c), 0, 0) < 0) {
+    if(dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0) < 0) {
 		dso_unlock();
 		return -1;
     }
@@ -602,163 +535,15 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
     return 0;
 }
 
-/*!
-    \fn HantekDSOIO::dsoSetLogicalData(int data)
- */
-int dso_set_logical_data(int data)
-{
-    dso_lock();
-
-    int rv = dso_begin_command();
-    if (rv < 0) {
-        dso_unlock();
-        return rv;
-    }
-
-    rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[8] = {C_LOGICAL_DATA_SET, 0x0F, 0, 0, 0, 0, 0, 0};
-    command[2] = (unsigned char)data;
-
-    rv = dso_write_bulk(command, sizeof(command));
-    if (rv < 0)
-    {
-        DMSG("In function %s", __FUNCTION__);
-        dso_unlock();
-        return rv;
-    }
-
-    dso_unlock();
-    return 0;
-}
-
-int dso_get_logical_data(void *buffer)
-{
-    dso_lock();
-
-    int rv = dso_begin_command();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    unsigned char command[2] = {C_LOGICAL_DATA_GET, 0};
-    rv = dso_write_bulk(command, sizeof(command));
-    if (rv < 0)
-    {
-        DMSG("In function %s", __FUNCTION__);
-        dso_unlock();
-        return rv;
-    }
-
-    rv = dso_get_connection_speed();
-    if (rv < 0)
-    {
-        dso_unlock();
-        return rv;
-    }
-
-    rv = dso_read_bulk(buffer, epInMaxPacketLen);
-    if (rv < 0)
-    {
-        DMSG("In function %s", __FUNCTION__);
-        dso_unlock();
-
-        return rv;
-    }
-
-    dso_unlock();
-    return epInMaxPacketLen;
-}
-
-/*!
-    \fn HantekDSOIO::dsoGetDeviceAddress(int& deviceAddress)
- */
-int dso_get_device_address(int *deviceAddress)
-{
-    dso_lock();
-
-    *deviceAddress=0;
-    int rv = dso_read_control(CONTROL_COMMAND, (char*)deviceAddress, sizeof(char), VALUE_DEVICEADDRESS, 0);
-    if (rv < 0) {
-        dso_unlock();
-        DMSG("In function %s", __FUNCTION__);
-        return rv;
-    }
-
-    dso_unlock();
-    return 0;
-}
-
-/*!
-    \fn HantekDSOIO::dsoSetDeviceAddress(int& deviceAddress)
- */
-int dso_set_device_address(int *deviceAddress)
-{
-    dso_lock();
-
-    int rv = dso_write_control(CONTROL_COMMAND, (char*)deviceAddress, sizeof(char), VALUE_DEVICEADDRESS, 0);
-    if (rv < 0)
-    {
-        dso_unlock();
-        DMSG("In function %s", __FUNCTION__);
-
-        return rv;
-    }
-
-    dso_unlock();
-    return 0;
-}
-
-/*!
-    \fn HantekDSOIO::dsoGetCalData(int& calData)
- */
 int dso_get_cal_data(int *calData)
 {
     dso_lock();
 
     *calData = 0;
-    int rv = dso_read_control(CONTROL_COMMAND, (char*)calData, sizeof(char), VALUE_CALDATA, 0);
-    if (rv < 0)
-    {
+    int rv = dso_read_control(C_COMMAND, (char*)calData, sizeof(char), VALUE_CALDATA, 0);
+    if (rv < 0) {
         dso_unlock();
-        DMSG("In function %s", __FUNCTION__);
-
-        return rv;
-    }
-
-    dso_unlock();
-	DMSG("ok\n");
-    return 0;
-}
-
-
-/*!
-    \fn HantekDSOIO::dsoSetCalData(int& calData)
- */
-int dso_set_cal_data(int *calData)
-{
-    dso_lock();
-
-    int rv = dso_write_control(CONTROL_COMMAND, (char*)calData, sizeof(char), VALUE_CALDATA, 0);
-    if (rv < 0)
-    {
-        dso_unlock();
-        DMSG("In function %s", __FUNCTION__);
-
+        DMSG("Command failed: %s", usb_strerror());
         return rv;
     }
 
@@ -770,7 +555,7 @@ int dso_get_offsets(struct offset_ranges *or)
 {
     dso_lock();
 
-    int rv = dso_read_control(CONTROL_COMMAND, or, sizeof(*or), VALUE_CHANNELLEVEL, 0);
+    int rv = dso_read_control(C_COMMAND, or, sizeof(*or), VALUE_CHANNELLEVEL, 0);
 
     if (rv < 0) {
         dso_unlock();
@@ -786,18 +571,15 @@ int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset)
     unsigned char offset[17] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-    offset[0] = 0x20;
-    //offset[1] = (unsigned char)ch1Offset;
+    //offset[0] = 0x20;
     offset[1] = ch1Offset >> 8;
-    offset[2] = 0x30;
-    //offset[3] = (unsigned char)ch2Offset;
+    //offset[2] = 0x30;
     offset[3] = ch2Offset >> 8;
-    offset[4] = 0x20;
-    //offset[5] = (unsigned char)extOffset;
+    //offset[4] = 0x20;
     offset[5] = extOffset;
 
     dso_lock();
-    int rv = dso_write_control(CONTROL_SETOFFSET, offset, sizeof(offset), 0, 0);
+    int rv = dso_write_control(C_SETOFFSET, offset, sizeof(offset), 0, 0);
 	dso_unlock();
 
     if (rv >= 0)
