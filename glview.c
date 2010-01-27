@@ -18,6 +18,7 @@ static int fl_pan = 0, fl_pan_ready = 0;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
 static int x_factor = 1;
+static GtkWidget *my_window;
 
 struct cursor_coord {
 	float x, y;
@@ -81,20 +82,8 @@ void gl_resize(int w, int h)
     glMatrixMode(GL_MODELVIEW);
 }
 
-struct timeval otime = { .tv_sec = 0, .tv_usec = 0 };
-
 void update_screen()
 {
-	struct timeval tv;
-
-   	gettimeofday(&tv, 0);
-	unsigned int dmsec = 1000 * (tv.tv_sec - otime.tv_sec) + (tv.tv_usec - otime.tv_usec) / 1000;
-
-	if(dmsec < 1000.0 / 30)		// frame limiter
-		return;
-
-	otime = tv;
-
     glPushMatrix();
    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
@@ -341,6 +330,17 @@ expose_event (GtkWidget      *widget,
 
 void display_refresh(GtkWidget *da)
 {
+	static struct timeval otime = { .tv_sec = 0, .tv_usec = 0 };
+	struct timeval tv;
+
+   	gettimeofday(&tv, 0);
+	unsigned int dmsec = 1000 * (tv.tv_sec - otime.tv_sec) + (tv.tv_usec - otime.tv_usec) / 1000;
+
+	if(dmsec < 1000.0 / 30)		// frame limiter
+		return;
+
+	otime = tv;
+
 	gdk_window_invalidate_rect(da->window, &da->allocation, FALSE);
 	gdk_window_process_updates(da->window, FALSE);
 }
@@ -429,6 +429,8 @@ void rezoom()
     glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_TIME/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_VOLTAGE/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+
+	display_refresh(my_window);
 }
 
 static
@@ -498,38 +500,25 @@ gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 static
 gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 {
-		DMSG("px = %f  py = %f\n", pan_x, pan_y);
-		float mx;
-		float my;
-		convert_coords(&mx, &my, w, e->x, e->y);
-		DMSG("mx = %f  my = %f\n", mx, my);
+	float mx, my;
+	convert_coords(&mx, &my, w, e->x, e->y);
 
 	if(e->direction > 0) {
-		DMSG("-\n");
+		pan_x = pan_x - mx * zoom_factor;
+		pan_y = pan_y - my * zoom_factor;
 
-		float ozoom = zoom_factor;
 		zoom_factor *= 2;
 		if(zoom_factor > 2)
 			zoom_factor = 2;
-
-		//pan_x = pan_x + mx * ozoom - mx * zoom_factor;
-		//pan_y = pan_y + my * ozoom - my * zoom_factor;
-		pan_x = pan_x - mx * ozoom;
-		pan_y = pan_y - my * ozoom;
 	} else {
-		DMSG("+\n");
-
-		float ozoom = zoom_factor;
 		zoom_factor /= 2;
 		if(zoom_factor < 0.005)
 			zoom_factor = 0.005;
 
-		pan_x = pan_x + mx * zoom_factor;// + mx / zoom_factor;
-		pan_y = pan_y + my * zoom_factor;// + my / zoom_factor;
-
+		pan_x = pan_x + mx * zoom_factor;
+		pan_y = pan_y + my * zoom_factor;
 	}
 
-		DMSG("PX = %f  PY = %f\n", pan_x, pan_y);
 	rezoom();
 	return FALSE;
 }
@@ -542,13 +531,11 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			if(x_factor > 1) {
 				x_factor--;
 				rezoom();
-				update_screen();
 			}
 			break;
 		case GDK_X:
 			x_factor++;
 			rezoom();
-			update_screen();
 			break;
 		case GDK_Shift_L:
 			fl_pan_ready = 1;
@@ -558,7 +545,6 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			pan_x = pan_y = 0;
 			zoom_factor = 1;
 			rezoom();
-			update_screen();
 			break;
 	}
 
@@ -580,6 +566,8 @@ GtkWidget *display_create_widget(GtkWidget *parent)
 {
 	GtkWidget *drawing_area = gtk_drawing_area_new ();
 	gtk_widget_set_size_request (drawing_area, 320, 240);
+
+	my_window = drawing_area;
 
 	/* Set OpenGL-capability to the widget. */
 	gtk_widget_set_gl_capability (drawing_area, glconfig, NULL, TRUE, GDK_GL_RGBA_TYPE);

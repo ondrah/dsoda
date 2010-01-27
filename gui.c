@@ -431,8 +431,8 @@ void simul_generate()
 	int dr = nr_sampling_rates[5], sr = nr_sampling_rates[sampling_rate_idx];
 	float fac = (float)dr / sr;
 	for(int i = 0; i < my_buffer_size; i++) {
-		my_buffer[2 * i + 0] = AX * sin(i * fac / 3 * SPEED_FAC) + 128;
-		my_buffer[2 * i + 1] = AY * cos(i * fac / 2 * SPEED_FAC) + 128;
+		my_buffer[2 * i + 0] = AX * sin(i /* fac / 3*/ * SPEED_FAC) + 128;
+		my_buffer[2 * i + 1] = AY * cos(i /* fac / 2*/ * SPEED_FAC) + 128;
 	}
 #undef SPEED_FAC
 #undef AX
