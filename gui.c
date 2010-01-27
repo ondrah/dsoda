@@ -91,11 +91,11 @@ static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
 static
 void start_clicked()
 {
-	if(!dso_initialized)
-		return;
-
 	DMSG("running capture\n");
 	fl_running = 1;	// start updating the screen, FIXME
+
+	if(!dso_initialized)
+		return;
 
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	dso_set_filter(reject_hf);
@@ -105,11 +105,11 @@ void start_clicked()
 static
 void stop_clicked()
 {
-	if(dso_trigger_mode == TRIGGER_SINGLE)	// should not happen anyway
-		return;
-
 	DMSG("stopping capture\n");
 	fl_running = 0;
+
+	if(dso_trigger_mode == TRIGGER_SINGLE)	// should not happen anyway
+		return;
 
 	if(dso_initialized)
 		dso_thread_pause();

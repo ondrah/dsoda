@@ -425,7 +425,8 @@ void rezoom()
 {
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
+    //glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
+    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_TIME/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_VOLTAGE/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 }
@@ -442,16 +443,17 @@ gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 		float mx;
 		float my;
 		convert_coords(&mx, &my, w, e->x, e->y);
-		pan_x += (press_x - mx); // zoom_factor;
-		pan_y += (press_y - my); // zoom_factor;
+		pan_x += (press_x - mx) * zoom_factor;
+		pan_y += (press_y - my) * zoom_factor;
 		press_x = mx;
 		press_y = my;
 
-		pan_x = MAX(pan_x, -DIVS_TIME / 2 / zoom_factor);
-		pan_x = MIN(pan_x, +DIVS_TIME / 2 / zoom_factor);
-		pan_y = MAX(pan_y, -DIVS_VOLTAGE / 2 / zoom_factor);
-		pan_y = MIN(pan_y, +DIVS_VOLTAGE / 2 / zoom_factor);
+		pan_x = MAX(pan_x, -DIVS_TIME / 2 /*/ zoom_factor */);
+		pan_x = MIN(pan_x, +DIVS_TIME / 2 /*/ zoom_factor */ );
+		pan_y = MAX(pan_y, -DIVS_VOLTAGE / 2 /*/ zoom_factor */);
+		pan_y = MIN(pan_y, +DIVS_VOLTAGE / 2 /*/ zoom_factor */);
 
+		DMSG("px = %f, y=%f\n", pan_x, pan_y);
 		rezoom();
 	}
 
@@ -496,18 +498,38 @@ gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 static
 gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 {
+		DMSG("px = %f  py = %f\n", pan_x, pan_y);
+		float mx;
+		float my;
+		convert_coords(&mx, &my, w, e->x, e->y);
+		DMSG("mx = %f  my = %f\n", mx, my);
+
 	if(e->direction > 0) {
 		DMSG("-\n");
+
+		float ozoom = zoom_factor;
 		zoom_factor *= 2;
 		if(zoom_factor > 2)
 			zoom_factor = 2;
+
+		//pan_x = pan_x + mx * ozoom - mx * zoom_factor;
+		//pan_y = pan_y + my * ozoom - my * zoom_factor;
+		pan_x = pan_x - mx * ozoom;
+		pan_y = pan_y - my * ozoom;
 	} else {
 		DMSG("+\n");
+
+		float ozoom = zoom_factor;
 		zoom_factor /= 2;
 		if(zoom_factor < 0.005)
 			zoom_factor = 0.005;
+
+		pan_x = pan_x + mx * zoom_factor;// + mx / zoom_factor;
+		pan_y = pan_y + my * zoom_factor;// + my / zoom_factor;
+
 	}
 
+		DMSG("PX = %f  PY = %f\n", pan_x, pan_y);
 	rezoom();
 	return FALSE;
 }
@@ -535,6 +557,7 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 		case GDK_Escape:
 			pan_x = pan_y = 0;
 			zoom_factor = 1;
+			rezoom();
 			update_screen();
 			break;
 	}
