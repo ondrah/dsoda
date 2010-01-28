@@ -53,7 +53,7 @@ void gl_done()
 	glDeleteLists(gl_grid, gl_grid);
 }
 
-GLuint gl_makegrid();
+static GLuint gl_makegrid();
 
 static
 void gl_init()
@@ -69,27 +69,25 @@ void gl_init()
     gl_channels = glGenLists(MAX_CHANNELS);
     gl_math = glGenLists(1);
 	gl_cursor = glGenLists(2);
-    glShadeModel(GL_SMOOTH/*GL_FLAT*/);
+    glShadeModel(GL_SMOOTH);
     glLineStipple (1, 0x00FF);
 }
 
+static
 void gl_resize(int w, int h)
 {
-   // glViewport(0, 0, (GLint)w, (GLint)h);
+	glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho(-DIVS_TIME/2 - MARGIN_CANVAS, DIVS_TIME/2 + MARGIN_CANVAS, -DIVS_VOLTAGE/2 - MARGIN_CANVAS, DIVS_VOLTAGE/2 + MARGIN_CANVAS, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
+static
 void update_screen()
 {
     glPushMatrix();
-   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
-	//glTranslatef(-1.5f,0.0f,-6.0f);
-    //glScalef(0.10, 0.10, 10);
-
     glLineWidth(2);
 
 //	if(!fl_gui_running) {
@@ -101,10 +99,8 @@ void update_screen()
 
 	while((int)trigger_point > (int)my_buffer_size) {
 		trigger_point -= my_buffer_size;
-	//	DMSG("tp=%d\n", trigger_point);
 	}
 
-	//printf("mbs=%d\n", my_buffer_size);
 	for (int t = 0 ; t < MAX_CHANNELS; t++) {
 		if(!capture_ch[t])
 			continue;
@@ -124,11 +120,12 @@ void update_screen()
 //			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 //		}
 
+		float overlap = ((float)my_buffer_size/10000) / 2;
 		int x = trigger_point;
 		for (int i = 0; i < my_buffer_size; i++, x++) {
 			if(x >= my_buffer_size)
 				x = 0;
-			glVertex2f(DIVS_TIME * ((float) i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_TIME * ((float) i / 10000 - overlap), DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
 		}
 
 		glEnd();
@@ -226,6 +223,7 @@ void update_screen()
 
 }
 
+static
 GLuint gl_makegrid()
 {
     GLuint list = glGenLists(1);
@@ -278,51 +276,42 @@ GLuint gl_makegrid()
 static void
 realize (GtkWidget *widget, gpointer   data)
 {
-	//DMSG("realize\n");
 	gl_init();
 	gdk_window_set_cursor(widget->window, cursor_cross);
 }
 
-static gboolean
-configure_event (GtkWidget         *widget, GdkEventConfigure *event, gpointer           data)
-{
-  GdkGLContext *glcontext = gtk_widget_get_gl_context (widget);
-  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (widget);
-
-  g_print("configure\n");
-  /*** OpenGL BEGIN ***/
-  if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
-    return FALSE;
-  int w = widget->allocation.width;
-  int h = widget->allocation.height;
-  DMSG("w %d h %d\n", w, h);
-  glViewport (0, 0, w, h);
-  gl_resize(w, h);
-
-  gdk_gl_drawable_gl_end (gldrawable);
-  /*** OpenGL END ***/
-
-  return TRUE;
-}
-
-static gboolean
-expose_event (GtkWidget      *widget,
-	      GdkEventExpose *event,
-	      gpointer        data)
+static
+gboolean configure_event(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 {
 	GdkGLContext *glcontext = gtk_widget_get_gl_context(widget);
-  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable(widget);
+	GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable(widget);
 
-  /*** OpenGL BEGIN ***/
-  if (!gdk_gl_drawable_gl_begin(gldrawable, glcontext))
-    return FALSE;
+	if(!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
+		return FALSE;
+
+	gl_resize(widget->allocation.width, widget->allocation.height);
+
+	gdk_gl_drawable_gl_end (gldrawable);
+
+	return TRUE;
+}
+
+static
+gboolean expose_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
+{
+	GdkGLContext *glcontext = gtk_widget_get_gl_context(widget);
+	GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable(widget);
+
+	if(!gdk_gl_drawable_gl_begin(gldrawable, glcontext))
+		return FALSE;
 
 	update_screen();
 
-	if (gdk_gl_drawable_is_double_buffered (gldrawable))
+	if(gdk_gl_drawable_is_double_buffered (gldrawable)) {
 		gdk_gl_drawable_swap_buffers (gldrawable);
-	else
+	} else {
 		glFlush ();
+	}
 
 	gdk_gl_drawable_gl_end (gldrawable);
 	return TRUE;
@@ -344,13 +333,6 @@ void display_refresh(GtkWidget *da)
 	gdk_window_invalidate_rect(da->window, &da->allocation, FALSE);
 	gdk_window_process_updates(da->window, FALSE);
 }
-
-//static
-//gint update_timer_cb()
-//{
-//	display_refresh();
-//	return TRUE;
-//}
 
 int display_init(int *pargc, char ***pargv)
 {
@@ -378,8 +360,6 @@ int display_init(int *pargc, char ***pargv)
         }
     }
 
-  //examine_gl_config_attrib (glconfig);
-
   /* Get automatically redrawn if any of their children changed allocation. */
  // gtk_container_set_reallocate_redraws (GTK_CONTAINER (window), TRUE);
 
@@ -405,19 +385,18 @@ void cursor_draw(int i)
 
 	glColor4f(CHANNEL1_RGB, 0.8);
 
-	glVertex2f(ac->x * zoom_factor / x_factor, -DIVS_VOLTAGE / 2);
-	glVertex2f(ac->x * zoom_factor / x_factor, DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, DIVS_VOLTAGE / 2);
 	glEnd();
 
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_TIME / 2, ac->y * zoom_factor);
-	glVertex2f(DIVS_TIME / 2, ac->y * zoom_factor);
+	glVertex2f(-DIVS_TIME / 2, ac->y * zoom_factor + pan_y);
+	glVertex2f(DIVS_TIME / 2, ac->y * zoom_factor + pan_y);
 
 	glEnd();
 	if(i == 1)
 		glDisable(GL_LINE_STIPPLE);
 	glEndList();
-
 }
 
 static
@@ -425,7 +404,6 @@ void rezoom()
 {
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    //glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (DIVS_TIME/2 + MARGIN_CANVAS + pan_x) * zoom_factor / x_factor, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS + pan_y) * zoom_factor, (DIVS_VOLTAGE/2 + MARGIN_CANVAS + pan_y) * zoom_factor, -1.0, 1.0);
     glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_TIME/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_VOLTAGE/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -468,6 +446,12 @@ gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 }
 
 static
+void cursor_info()
+{
+	DMSG("CURSOR: x0 = %f  y0 = %f  x1 = %f  y1 = %f\n", cursor[0].x, cursor[0].y, cursor[1].x, cursor[1].y);
+}
+
+static
 gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
 	//DMSG("type = %d\n", e->type);
@@ -481,6 +465,7 @@ gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 	cursor_active = 1;
 	convert_coords(&cursor[0].x, &cursor[0].y, w, e->x, e->y);
 	cursor_draw(0);
+	cursor_info();
 
 	return FALSE;
 }
@@ -490,6 +475,7 @@ gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
 	if(cursor_active) {
 		cursor_active = 0;
+		cursor_info();
 		return FALSE;
 	}
 	
