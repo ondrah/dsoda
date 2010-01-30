@@ -20,20 +20,23 @@ static float press_x, press_y;
 static int x_factor = 1;
 static GtkWidget *my_window;
 
+static int samples_in_grid = 10000;
+
 struct cursor_coord {
 	float x, y;
 };
 
 struct cursor_coord cursor[2] = { {.x = 0, .y = 0}, {.x = 0, .y = 0}}; 
-int cursor_active = 0;
+static int cursor_active = 0;
+static int cursor_source = 0;
 
 #define DP_DEPTH	16
 #define MAX_CHANNELS 2
 
 #define INTERPOLATION_OFF 0
 
-#define DIVS_TIME	10
-#define DIVS_VOLTAGE 8
+#define DIVS_H	10
+#define DIVS_V 8
 #define VOLTAGE_SCALE	32
 
 #define MARGIN_CANVAS	0.05
@@ -79,7 +82,7 @@ void gl_resize(int w, int h)
 	glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-DIVS_TIME/2 - MARGIN_CANVAS, DIVS_TIME/2 + MARGIN_CANVAS, -DIVS_VOLTAGE/2 - MARGIN_CANVAS, DIVS_VOLTAGE/2 + MARGIN_CANVAS, -1.0, 1.0);
+    glOrtho(-DIVS_H/2 - MARGIN_CANVAS, DIVS_H/2 + MARGIN_CANVAS, -DIVS_V/2 - MARGIN_CANVAS, DIVS_V/2 + MARGIN_CANVAS, -1.0, 1.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
@@ -114,10 +117,10 @@ void update_screen()
 		}
 
 //		for (int i = trigger_point; i < my_buffer_size; i++) {
-//			glVertex2f(DIVS_TIME * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//			glVertex2f(DIVS_H * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
 //		}
 //		for (int i = 0; i < trigger_point; i++) {
-//			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * my_buffer[2*i + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+//			glVertex2f(DIVS_H * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
 //		}
 
 		float overlap = ((float)my_buffer_size/10000) / 2;
@@ -125,7 +128,7 @@ void update_screen()
 		for (int i = 0; i < my_buffer_size; i++, x++) {
 			if(x >= my_buffer_size)
 				x = 0;
-			glVertex2f(DIVS_TIME * ((float) i / 10000 - overlap), DIVS_VOLTAGE * my_buffer[2*x + t] / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), DIVS_V * my_buffer[2*x + t] / 256.0 - DIVS_V / 2.0);
 		}
 
 		glEnd();
@@ -142,11 +145,11 @@ void update_screen()
 			if(x >= my_buffer_size)
 				x = 0;
 			int v = (my_buffer[2*x] + my_buffer[2*x + 1] ) >> 1;
-			glVertex2f(DIVS_TIME * ((float)i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+			glVertex2f(DIVS_H * ((float)i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_V * v / 256.0 - DIVS_V / 2.0);
 		}
 //		for (int i = 0; i < trigger_point; i++) {
 //			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
-//			glVertex2f(DIVS_TIME * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_VOLTAGE * v / 256.0 - DIVS_VOLTAGE / 2.0);
+//			glVertex2f(DIVS_H * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * v / 256.0 - DIVS_V / 2.0);
 //		}
 
 		glEnd();
@@ -191,8 +194,8 @@ void update_screen()
                 aThread->bufferMutex.unlock();
 
                 glPushMatrix();
-                glTranslatef(-DIVS_TIME/2, -DIVS_VOLTAGE/2, 0);
-                glScalef(DIVS_TIME*timeDiv/transformedSamples, DIVS_VOLTAGE, 1.0);
+                glTranslatef(-DIVS_H/2, -DIVS_V/2, 0);
+                glScalef(DIVS_H*timeDiv/transformedSamples, DIVS_V, 1.0);
                 glLineWidth(1);
                 for (int t = 0; t < MAX_CHANNELS; t++)
                 {
@@ -233,17 +236,17 @@ GLuint gl_makegrid()
 	glColor4f(0.7, 0.7, 0.7, 0.5);  // Grid Color
 	glEnable(GL_LINE_STIPPLE);
 	glBegin(GL_LINES);
-	for(GLfloat i=1; i<=DIVS_TIME/2; i++) {
-		glVertex2f(i, -DIVS_VOLTAGE/2);
-		glVertex2f(i, DIVS_VOLTAGE/2);
-		glVertex2f(-i, -DIVS_VOLTAGE/2);
-		glVertex2f(-i, DIVS_VOLTAGE/2);
+	for(GLfloat i=1; i<=DIVS_H/2; i++) {
+		glVertex2f(i, -DIVS_V/2);
+		glVertex2f(i, DIVS_V/2);
+		glVertex2f(-i, -DIVS_V/2);
+		glVertex2f(-i, DIVS_V/2);
 	}
-	for(GLfloat i=1; i<=DIVS_VOLTAGE/2; i++) {
-		glVertex2f(-DIVS_TIME/2, i);
-		glVertex2f(DIVS_TIME/2, i);
-		glVertex2f(-DIVS_TIME/2, -i);
-		glVertex2f(DIVS_TIME/2, -i);
+	for(GLfloat i=1; i<=DIVS_V/2; i++) {
+		glVertex2f(-DIVS_H/2, i);
+		glVertex2f(DIVS_H/2, i);
+		glVertex2f(-DIVS_H/2, -i);
+		glVertex2f(DIVS_H/2, -i);
 	}
 	glEnd();
 
@@ -251,17 +254,17 @@ GLuint gl_makegrid()
 	glColor4f(1.0, 1.0, 1.0, 0.3);
 	glDisable(GL_LINE_STIPPLE);
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_TIME/2, 0);
-	glVertex2f(DIVS_TIME/2, 0);
-	glVertex2f(0, -DIVS_VOLTAGE/2);
-	glVertex2f(0, DIVS_VOLTAGE/2);
-	for(GLfloat i=0; i<=DIVS_TIME/2; i+=0.5) {
+	glVertex2f(-DIVS_H/2, 0);
+	glVertex2f(DIVS_H/2, 0);
+	glVertex2f(0, -DIVS_V/2);
+	glVertex2f(0, DIVS_V/2);
+	for(GLfloat i=0; i<=DIVS_H/2; i+=0.5) {
 		glVertex2f(i, -0.1);
 		glVertex2f(i, 0.1);
 		glVertex2f(-i, -0.1);
 		glVertex2f(-i, 0.1);
 	}
-	for(GLfloat i=0; i<=DIVS_VOLTAGE/2; i+=0.5) {
+	for(GLfloat i=0; i<=DIVS_V/2; i+=0.5) {
 		glVertex2f(-0.1, i);
 		glVertex2f(0.1, i);
 		glVertex2f(-0.1, -i);
@@ -347,14 +350,14 @@ int display_init(int *pargc, char ***pargv)
                                         GDK_GL_MODE_DEPTH  |
                                         GDK_GL_MODE_DOUBLE);
   if (glconfig == NULL) {
-      g_print ("*** Cannot find the double-buffered visual.\n");
-      g_print ("*** Trying single-buffered visual.\n");
+      g_print("*** Cannot find the double-buffered visual.\n");
+      g_print("*** Trying single-buffered visual.\n");
 
       /* Try single-buffered visual */
       glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB   |
                                             GDK_GL_MODE_DEPTH);
       if (glconfig == NULL) {
-          g_print ("*** No appropriate OpenGL-capable visual found.\n");
+          g_print("*** No appropriate OpenGL-capable visual found.\n");
           //exit (1);
 		  return -1;
         }
@@ -369,8 +372,8 @@ int display_init(int *pargc, char ***pargv)
 static
 void convert_coords(float *dx, float *dy, GtkWidget *w, float cx, float cy)
 {
-	*dx = DIVS_TIME * cx / w->allocation.width - DIVS_TIME / 2;
-	*dy = -(DIVS_VOLTAGE * cy / w->allocation.height - DIVS_VOLTAGE / 2);
+	*dx = DIVS_H * cx / w->allocation.width - DIVS_H / 2;
+	*dy = -(DIVS_V * cy / w->allocation.height - DIVS_V / 2);
 }
 
 static
@@ -383,15 +386,18 @@ void cursor_draw(int i)
 		glEnable(GL_LINE_STIPPLE);
 	glBegin(GL_LINE_STRIP);
 
-	glColor4f(CHANNEL1_RGB, 0.8);
+	if(cursor_source == 0)
+		glColor4f(CHANNEL1_RGB, 0.8);
+	else
+		glColor4f(CHANNEL2_RGB, 0.8);
 
-	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -DIVS_VOLTAGE / 2);
-	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, DIVS_VOLTAGE / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -DIVS_V / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, DIVS_V / 2);
 	glEnd();
 
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_TIME / 2, ac->y * zoom_factor + pan_y);
-	glVertex2f(DIVS_TIME / 2, ac->y * zoom_factor + pan_y);
+	glVertex2f(-DIVS_H / 2, ac->y * zoom_factor + pan_y);
+	glVertex2f(DIVS_H / 2, ac->y * zoom_factor + pan_y);
 
 	glEnd();
 	if(i == 1)
@@ -404,7 +410,7 @@ void rezoom()
 {
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho((-DIVS_TIME/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_TIME/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_VOLTAGE/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_VOLTAGE/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
+    glOrtho((-DIVS_H/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_H/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_V/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_V/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -423,23 +429,24 @@ gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 		float mx;
 		float my;
 		convert_coords(&mx, &my, w, e->x, e->y);
-		pan_x += (press_x - mx) * zoom_factor;
+		pan_x += (press_x - mx) * zoom_factor / x_factor;
 		pan_y += (press_y - my) * zoom_factor;
 		press_x = mx;
 		press_y = my;
 
-		pan_x = MAX(pan_x, -DIVS_TIME / 2 /*/ zoom_factor */);
-		pan_x = MIN(pan_x, +DIVS_TIME / 2 /*/ zoom_factor */ );
-		pan_y = MAX(pan_y, -DIVS_VOLTAGE / 2 /*/ zoom_factor */);
-		pan_y = MIN(pan_y, +DIVS_VOLTAGE / 2 /*/ zoom_factor */);
+		pan_x = MAX(pan_x, -DIVS_H / 2 /*/ zoom_factor */);
+		pan_x = MIN(pan_x, +DIVS_H / 2 /*/ zoom_factor */ );
+		pan_y = MAX(pan_y, -DIVS_V / 2 /*/ zoom_factor */);
+		pan_y = MIN(pan_y, +DIVS_V / 2 /*/ zoom_factor */);
 
-		DMSG("px = %f, y=%f\n", pan_x, pan_y);
+		//DMSG("px = %f, y=%f\n", pan_x, pan_y);
 		rezoom();
 	}
 
 	if(cursor_active) {
 		convert_coords(&cursor[1].x, &cursor[1].y, w, e->x, e->y);
 		cursor_draw(1);
+		display_refresh(my_window);
 	}
 
 	return FALSE;
@@ -448,7 +455,18 @@ gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 static
 void cursor_info()
 {
-	DMSG("CURSOR: x0 = %f  y0 = %f  x1 = %f  y1 = %f\n", cursor[0].x, cursor[0].y, cursor[1].x, cursor[1].y);
+	float time_base = (float)samples_in_grid / DIVS_H * (1000000.0 / gui_get_sampling_rate());
+	float v = get_channel_voltage(cursor_source);
+	float o = (get_channel_offset(cursor_source) - 0.5) * DIVS_V;
+	float dx = (cursor[1].x - cursor[0].x) * time_base * zoom_factor / x_factor;
+	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
+	char *str_vu = "V";
+	char *str_hu = "usec";
+	g_print("CURSOR CHANNEL %d:\nx0 = %f %s y0 = %f %s\nx1 = %f %s y1 = %f %s\ndx = %f %s dy = %f %s\n",
+			cursor_source + 1,
+			cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu,
+			cursor[1].x * zoom_factor / x_factor * time_base, str_hu, (cursor[1].y * zoom_factor - o) * v, str_vu,
+			dx, str_hu, dy, str_vu);
 }
 
 static
@@ -465,6 +483,7 @@ gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 	cursor_active = 1;
 	convert_coords(&cursor[0].x, &cursor[0].y, w, e->x, e->y);
 	cursor_draw(0);
+	display_refresh(my_window);
 	cursor_info();
 
 	return FALSE;
@@ -513,13 +532,23 @@ static
 gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
 	switch(e->keyval) {
-		case GDK_Z:
+		case GDK_c:
+			cursor_source ^= 1;
+			cursor_draw(0);
+			cursor_draw(1);
+			display_refresh(my_window);
+			break;
+		case GDK_i:
+			interpolationMode ^= 1;
+			display_refresh(my_window);
+			break;
+		case GDK_z:
 			if(x_factor > 1) {
 				x_factor--;
 				rezoom();
 			}
 			break;
-		case GDK_X:
+		case GDK_x:
 			x_factor++;
 			rezoom();
 			break;

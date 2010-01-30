@@ -23,12 +23,12 @@ void __nsleep(const struct timespec *req)
 
 static
 void myusleep(unsigned long usec)  
-{  
+{
     struct timespec req;
-    time_t sec=(int)(usec/1000000);
-    usec-=sec*1000000;
-    req.tv_sec=sec;  
-    req.tv_nsec=usec*1000;
+    time_t sec = usec / 1000000;
+    usec -= sec * 1000000;
+    req.tv_sec = sec;  
+    req.tv_nsec = usec * 1000;
     __nsleep(&req);
 }  
 
@@ -80,6 +80,7 @@ void *dso_thread(void *ptr)
 
 				case 1: // in progress
 					myusleep(dso_period_usec >> 1);
+					myusleep(dso_period_usec >> 1);
 					break;
 
 				case 2: // full
@@ -115,6 +116,7 @@ void dso_thread_terminate()
     fl_terminate = 1;
 
 	pthread_join(my_thread, 0);
+	DMSG("DSO thread terminated\n");
 }
 
 void dso_thread_init()

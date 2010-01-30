@@ -8,8 +8,6 @@
 
 typedef unsigned char u8;
 
-#define DSO_CHECK	
-
 unsigned int dso_trigger_point = 0;
 
 pthread_mutex_t dso_mutex = PTHREAD_MUTEX_INITIALIZER; 
@@ -491,7 +489,7 @@ int dso_get_capture_state(int *tp)
 
 int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_ch1, int coupling_ch2, int trigger)
 {
-	const u8 voltages[][2][2] = {
+	const u8 relays[][2][2] = {
 		{{ 0xfb, 0xf7 }, { 0xdf, 0xbf }},	// 100mV
 		{{ 0xfb, 0x08 }, { 0xdf, 0x40 }},	// 1V
 		{{ 0x04, 0x08 }, { 0x20, 0x40 }},	// 10V
@@ -504,9 +502,12 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
         return rv;
     }
 
-    unsigned char command[8] = {B_SET_VOLTAGE, 0, 0, 0, 0, 0, 0, 11};
+    u8 c0[8] = {B_SET_VOLTAGE, 0x0f, 0, 0, 0, 0, 0, 0};
+	int m3_1 = voltage_ch1 % 3;
+	int m3_2 = voltage_ch2 % 3;
+	c0[2] = (((0xC >> m3_2) & 3) << 2) | ((0xC >> m3_1) & 3);
 
-    rv = dso_write_bulk(command, sizeof(command));
+    rv = dso_write_bulk(c0, sizeof(c0));
     if (rv < 0) {
         dso_unlock();
         return rv;
@@ -517,11 +518,11 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	
     u8 c[17];
 	c[0] = 0x00;
-	c[1] = voltages[step_ch1][0][0];
-	c[2] = voltages[step_ch1][0][1];
+	c[1] = relays[step_ch1][0][0];
+	c[2] = relays[step_ch1][0][1];
 	c[3] = coupling_ch1 == COUPLING_AC ? 0x02 : 0xfd;
-	c[4] = voltages[step_ch2][1][0];
-	c[5] = voltages[step_ch2][1][1];
+	c[4] = relays[step_ch2][1][0];
+	c[5] = relays[step_ch2][1][1];
 	c[6] = coupling_ch1 == COUPLING_AC ? 0x10 : 0xef;
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
 	c[8] = c[9] = c[10] = c[11] = c[12] = c[13] = c[14] = c[15] = c[16] = 0;

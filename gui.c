@@ -24,18 +24,18 @@
 #define DSODA_URL	"http://dsoda.sf.net"
 
 static int fl_running = 0;
-
+static float nr_voltages[] = {0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5};
 
 #define COMPUTE_TRIGGER_POSITION(tp)	(tp * 0xFFFE + 0xD7FE * (1 - tp))
 
-static int voltage_ch[2] = { VOLTAGE_5V, VOLTAGE_5V };
+static int voltage_ch[2] = { VOLTAGE_1V, VOLTAGE_1V };
 static int trigger_slope = SLOPE_PLUS;
 static int trigger_source = TRIGGER_CH1;
 static int trigger_position;
 static int selected_channels = SELECT_CH1CH2;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
-static float offset_ch1 = 0.8, offset_ch2 = 0.4, offset_t = 0.7, position_t = 0.5;
+static float offset_ch1 = 0.75, offset_ch2 = 0.4, offset_t = 0.75, position_t = 0.5;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
@@ -66,7 +66,7 @@ static const unsigned int nr_buffer_sizes[] = { 10240, 524228, 1048576 };
 static const char *str_sampling_rates[] = { 
 	"8ns 125MS/s", "10ns 100MS/s", "20ns 50MS/s", "40ns 25MS/s", "100ns 10MS/s", "200ns 5MS/s", "400ns 2.5MS/s", "1us 1MS/s", "2us 500KS/s", "4us 250KS/s", "10us 100KS/s", "20us 50KS/s", "40us 25KS/s", "100us 10KS/s", "200us 5KS/s", "400us 2.5KS/s", "20ms 50S/s"
 };
-static const float nr_sampling_rates[] = { 125000000, 100000000,50000000,25000000,10000000,5000000,2500000,1000000,500000,250000,100000,50000,25000,10000,5000,2500,50
+static const unsigned int nr_sampling_rates[] = { 125000000, 100000000,50000000,25000000,10000000,5000000,2500000,1000000,500000,250000,100000,50000,25000,10000,5000,2500,50
 };
 
 //static const float nr_time_steps[] = {8, 10, 20, 40, 100, 200, 400, 1, 2, 4,
@@ -78,7 +78,7 @@ static const char *str_attenuations[] = {"x1", "x10"};
 static int nr_attenuations[] = { 1, 10 };
 
 static int buffer_size_idx = 0, sampling_rate_idx = 5;
-#define COMPUTE_PERIOD_USEC	(1000000 / nr_sampling_rates[sampling_rate_idx] * nr_buffer_sizes[buffer_size_idx])
+#define COMPUTE_PERIOD_USEC	(1000000.0 / nr_sampling_rates[sampling_rate_idx] * nr_buffer_sizes[buffer_size_idx])
 volatile unsigned int dso_period_usec;
 volatile int dso_trigger_mode = TRIGGER_AUTO;
 
@@ -88,14 +88,46 @@ static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
 
 #define VOID_PTR(a)		((void *)a)
 
+float get_channel_voltage(int ch)
+{
+	return nr_voltages[voltage_ch[ch]];
+}
+
+float get_channel_offset(int ch)
+{
+	switch(ch) {
+		case 0:
+			return offset_ch1;
+		default:
+			return offset_ch2;
+	}
+}
+
+unsigned int gui_get_sampling_rate()
+{
+	return nr_sampling_rates[sampling_rate_idx];
+}
+
+static gboolean simul_dso();
+static void simul_generate();
+
+static
+void simul_start()
+{
+	simul_generate();
+	g_timeout_add(1000 / 30, simul_dso, 0);
+}
+
 static
 void start_clicked()
 {
 	DMSG("running capture\n");
 	fl_running = 1;	// start updating the screen, FIXME
 
-	if(!dso_initialized)
+	if(!dso_initialized) {
+		simul_start();
 		return;
+	}
 
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	dso_set_filter(reject_hf);
@@ -131,8 +163,6 @@ update_offset()
 	ro_ch1 = (offset_ranges.channel[0][voltage_ch[0]][1] - offset_ranges.channel[0][voltage_ch[0]][0]) * offset_ch1 + offset_ranges.channel[0][voltage_ch[0]][0];
 	ro_ch2 = (offset_ranges.channel[1][voltage_ch[1]][1] - offset_ranges.channel[1][voltage_ch[1]][0]) * offset_ch2 + offset_ranges.channel[1][voltage_ch[1]][0];
 	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t + offset_ranges.trigger[0];
-
-	//OFFSET_T = ro_t;
 
 	//FIXME repaint
 
@@ -271,7 +301,7 @@ static
 void update_time_per_window()
 {
 	char buf[64];
-	float t = nr_buffer_sizes[buffer_size_idx] / nr_sampling_rates[sampling_rate_idx];
+	float t = (float)nr_buffer_sizes[buffer_size_idx] / nr_sampling_rates[sampling_rate_idx];
 	float r = t;
 	char *unit;
 
@@ -298,8 +328,6 @@ void buffer_size_cb()
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	update_time_per_window();
 }
-
-static void simul_generate();
 
 static
 void sampling_rate_cb()
@@ -413,11 +441,12 @@ gint update_gui_cb()
 static
 gboolean simul_dso()
 {
+	if(!fl_running)
+		return FALSE;
+
 	trigger_point += 10;
 	trigger_point %= 10240;
-
-	if(fl_running)
-		display_refresh(display_area);
+	display_refresh(display_area);
 
 	return TRUE;
 }
@@ -524,7 +553,7 @@ void save_file_cb()
 //	int c1d = offset_ranges[0][voltage_ch[0]][1] - offset_ranges[0][voltage_ch[0]][0];
 //	int c2d = offset_ranges[1][voltage_ch[1]][1] - offset_ranges[1][voltage_ch[1]][0];
 	for(int i = 0; i < my_buffer_size; i++) {
-		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch1) / 32.0, (my_buffer[2*i] - offset_ch2) / 32.0);
+		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch1 * 0xff) * get_channel_voltage(0) / 32.0, (my_buffer[2*i] - offset_ch2 * 0xff) * get_channel_voltage(1) / 32.0);
 	}
 	fclose(f);
 }
@@ -599,8 +628,7 @@ offset_ch2_cb(GtkAdjustment *adj)
 static void
 offset_t_cb(GtkAdjustment *adj)
 {
-	int nval = 1 - adj->value;
-	offset_t = nval;
+	offset_t = 1 - adj->value;
 	update_offset();
 }
 
@@ -874,10 +902,8 @@ main(gint argc, char *argv[])
 	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
 
 	if(!fl_noinit && dso_initialized) {
-	//	int da;
-	//	dso_get_device_address(&da);
-
 		dso_get_offsets(&offset_ranges);
+		/*
 		for(int i=0; i<2; i++) {
 			DMSG("Channel %d\n", i);
 			for(int j=0; j<9; j++) {
@@ -886,13 +912,8 @@ main(gint argc, char *argv[])
 			DMSG("\n");
 		}
 		DMSG("trigger: 0x%x - 0x%x\n", offset_ranges.trigger[0], offset_ranges.trigger[1]);
-
-		//int cl;
-		//dso_get_cal_data(&cl);
-
+		*/
 		dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
-		update_offset();
-		//dso_set_offset(offset_ch1, offset_ch2, offset_t);
 	}
 
 	update_offset();
@@ -905,22 +926,20 @@ main(gint argc, char *argv[])
 	update_time_per_window();
 
 	trigger_position = COMPUTE_TRIGGER_POSITION(position_t);
-	if(!dso_initialized) {
-		simul_generate();
-		g_timeout_add(1000 / 30, simul_dso, 0);
-	}
+//	if(!dso_initialized) {
+//		simul_generate();
+//		g_timeout_add(1000 / 30, simul_dso, 0);
+//	}
 
 	gtk_main ();
-	//g_main_loop_run();
-
-	if(dso_initialized)
-		dso_done();
 
 	close(p[0]);
 	close(p[1]);
 
-	if(dso_initialized)
+	if(dso_initialized) {
 		dso_thread_terminate();
+		dso_done();
+	}
 
 	return 0;
 }

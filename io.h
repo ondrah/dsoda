@@ -113,4 +113,8 @@ enum {
 	TRIGGER_SINGLE,
 };
 
+unsigned int gui_get_sampling_rate();
+float get_channel_voltage(int ch);
+float get_channel_offset(int ch);
+
 #endif
