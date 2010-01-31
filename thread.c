@@ -30,7 +30,14 @@ void myusleep(unsigned long usec)
     req.tv_sec = sec;  
     req.tv_nsec = usec * 1000;
     __nsleep(&req);
-}  
+}
+
+cb_fn my_cb = 0;
+
+void dso_thread_set_cb(cb_fn cb)
+{
+	my_cb = cb;
+}
 
 static
 void *dso_thread(void *ptr)
@@ -49,6 +56,11 @@ void *dso_thread(void *ptr)
 		}
 
 		//DMSG("period = %d\n", dso_period_usec);
+
+		if(my_cb) {
+			my_cb();
+			my_cb = 0;
+		}
 
 		dso_capture_start();
 		myusleep(dso_period_usec);

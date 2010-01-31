@@ -330,6 +330,12 @@ void buffer_size_cb()
 }
 
 static
+void set_trigger_cb()
+{
+	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+}
+
+static
 void sampling_rate_cb()
 {
 	sampling_rate_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_srate));
@@ -344,7 +350,6 @@ void sampling_rate_cb()
 	}
 
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-	//dso_set_filter(reject_hf);
 }
 
 static
@@ -640,7 +645,9 @@ position_t_cb(GtkAdjustment *adj)
 	position_t = nval;
 	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
 	DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
-	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	//dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+
+	dso_thread_set_cb(&set_trigger_cb);
 }
 
 static

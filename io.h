@@ -117,4 +117,8 @@ unsigned int gui_get_sampling_rate();
 float get_channel_voltage(int ch);
 float get_channel_offset(int ch);
 
+typedef void (*cb_fn)();
+
+void dso_thread_set_cb(cb_fn cb);
+
 #endif
