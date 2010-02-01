@@ -89,7 +89,6 @@ int dso_adjust_buffer(unsigned int size);
 void dso_lock();
 void dso_unlock();
 int dso_set_voltage_and_coupling(int ch1Voltage, int ch2Voltage, int ch1Coupling, int ch2Coupling, int triggerSource);
-int dso_get_cal_data(int *calData);
 int dso_get_offsets(struct offset_ranges *or);
 int dso_set_filter(int hf_reject);
 int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSource, int triggerSlope, int triggerPosition, int bufferSize);

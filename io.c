@@ -205,7 +205,7 @@ int dso_read_control(unsigned char request, void *buffer, int len, int value, in
     int i, rv = -ETIMEDOUT;
     for(i = 0; (rv == -ETIMEDOUT) && (i < attempts); i++) {
         rv = usb_control_msg(udh, USB_ENDPOINT_IN | USB_TYPE_VENDOR,
-                    request, value, index, (char*)buffer, len, timeout);
+				request, value, index, (char*)buffer, len, timeout);
     }
 
 	if(rv>=0)
@@ -219,7 +219,8 @@ int dso_read_control(unsigned char request, void *buffer, int len, int value, in
 int dso_begin_command()
 {
 	int ret;
-    unsigned char c[10] = { 0x0F, 0x03, 0x03, 0x03, 0xec, 0xfc, 0xf4, 0x00, 0xec, 0xfc};
+    //unsigned char c[10] = { 0x0F, 0x03, 0x03, 0x03, 0xec, 0xfc, 0xf4, 0x00, 0xec, 0xfc};
+    unsigned char c[10] = { 0x0F, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if((ret = dso_write_control(C_BEGINCOMMAND, c, sizeof(c), 0, 0)) < 0) {
 		DMSG("dso_write_control failed\n");
 		return ret;
@@ -490,9 +491,9 @@ int dso_get_capture_state(int *tp)
 int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_ch1, int coupling_ch2, int trigger)
 {
 	const u8 relays[][2][2] = {
-		{{ 0xfb, 0xf7 }, { 0xdf, 0xbf }},	// 100mV
-		{{ 0xfb, 0x08 }, { 0xdf, 0x40 }},	// 1V
-		{{ 0x04, 0x08 }, { 0x20, 0x40 }},	// 10V
+		{{ 0xfb, 0xf7 }, { 0xdf, 0xbf }},	// 10mV
+		{{ 0xfb, 0x08 }, { 0xdf, 0x40 }},	// 100mV
+		{{ 0x04, 0x08 }, { 0x20, 0x40 }},	// 1V
 	};
 
 	dso_lock();
@@ -533,22 +534,6 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
     }
 
 	dso_unlock();
-    return 0;
-}
-
-int dso_get_cal_data(int *calData)
-{
-    dso_lock();
-
-    *calData = 0;
-    int rv = dso_read_control(C_COMMAND, (char*)calData, sizeof(char), VALUE_CALDATA, 0);
-    if (rv < 0) {
-        dso_unlock();
-        DMSG("Command failed: %s", usb_strerror());
-        return rv;
-    }
-
-    dso_unlock();
     return 0;
 }
 

@@ -19,6 +19,7 @@ static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
 static int x_factor = 1;
 static GtkWidget *my_window;
+static int cursor_set[2] = {0,0};
 
 static int samples_in_grid = 10000;
 
@@ -27,8 +28,7 @@ struct cursor_coord {
 };
 
 struct cursor_coord cursor[2] = { {.x = 0, .y = 0}, {.x = 0, .y = 0}}; 
-static int cursor_active = 0;
-static int cursor_source = 0;
+static int cursor_source = 0;	// channel source (target)
 
 #define DP_DEPTH	16
 #define MAX_CHANNELS 2
@@ -165,8 +165,10 @@ void update_screen()
 				if(fl_math)
 					glCallList(gl_math);
                 glCallList(gl_grid);
-				glCallList(gl_cursor);
-				glCallList(gl_cursor + 1);
+				if(cursor_set[0])
+					glCallList(gl_cursor);
+				if(cursor_set[1])
+					glCallList(gl_cursor + 1);
                 glPopMatrix();
             /*    break;
 
@@ -421,33 +423,27 @@ static
 gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 {
 	//DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
+	if(!fl_pan)
+		return FALSE;
 
 	if(w->allocation.width < 0 || w->allocation.height < 0)
 		return FALSE;
 
-	if(fl_pan) {
-		float mx;
-		float my;
-		convert_coords(&mx, &my, w, e->x, e->y);
-		pan_x += (press_x - mx) * zoom_factor / x_factor;
-		pan_y += (press_y - my) * zoom_factor;
-		press_x = mx;
-		press_y = my;
+	float mx;
+	float my;
+	convert_coords(&mx, &my, w, e->x, e->y);
+	pan_x += (press_x - mx) * zoom_factor / x_factor;
+	pan_y += (press_y - my) * zoom_factor;
+	press_x = mx;
+	press_y = my;
 
-		pan_x = MAX(pan_x, -DIVS_H / 2 /*/ zoom_factor */);
-		pan_x = MIN(pan_x, +DIVS_H / 2 /*/ zoom_factor */ );
-		pan_y = MAX(pan_y, -DIVS_V / 2 /*/ zoom_factor */);
-		pan_y = MIN(pan_y, +DIVS_V / 2 /*/ zoom_factor */);
+	pan_x = MAX(pan_x, -DIVS_H / 2 /*/ zoom_factor */);
+	pan_x = MIN(pan_x, +DIVS_H / 2 /*/ zoom_factor */ );
+	pan_y = MAX(pan_y, -DIVS_V / 2 /*/ zoom_factor */);
+	pan_y = MIN(pan_y, +DIVS_V / 2 /*/ zoom_factor */);
 
-		//DMSG("px = %f, y=%f\n", pan_x, pan_y);
-		rezoom();
-	}
-
-	if(cursor_active) {
-		convert_coords(&cursor[1].x, &cursor[1].y, w, e->x, e->y);
-		cursor_draw(1);
-		display_refresh(my_window);
-	}
+	//DMSG("px = %f, y=%f\n", pan_x, pan_y);
+	rezoom();
 
 	return FALSE;
 }
@@ -462,29 +458,35 @@ void cursor_info()
 	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
 	char *str_vu = "V";
 	char *str_hu = "usec";
-	g_print("CURSOR CHANNEL %d:\nx0 = %f %s y0 = %f %s\nx1 = %f %s y1 = %f %s\ndx = %f %s dy = %f %s\n",
-			cursor_source + 1,
-			cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu,
-			cursor[1].x * zoom_factor / x_factor * time_base, str_hu, (cursor[1].y * zoom_factor - o) * v, str_vu,
-			dx, str_hu, dy, str_vu);
+	
+	if(cursor_set[0])
+		g_print("c0:  x = %f %s y = %f %s\n", cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu);
+
+	if(cursor_set[1])
+		g_print("c1:  x = %f %s y = %f %s\n", cursor[1].x * zoom_factor / x_factor * time_base, str_hu, (cursor[1].y * zoom_factor - o) * v, str_vu);
+
+	if(cursor_set[0] && cursor_set[1])
+		g_print("d:   x = %f %s y = %f %s\n", dx, str_hu, dy, str_vu);
 }
 
 static
 gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
-	//DMSG("type = %d\n", e->type);
-
-	if(fl_pan_ready) {
+	if(e->button == 1 && fl_pan_ready) {
 		fl_pan = 1;
 		convert_coords(&press_x, &press_y, w, e->x, e->y);
 		return FALSE;
 	}
 
-	cursor_active = 1;
-	convert_coords(&cursor[0].x, &cursor[0].y, w, e->x, e->y);
-	cursor_draw(0);
-	display_refresh(my_window);
-	cursor_info();
+	if(e->button == 1 || e->button == 3) {
+		int cnr = e->button == 1 ? 0 : 1;
+
+		cursor_set[cnr] = 1;
+		convert_coords(&cursor[cnr].x, &cursor[cnr].y, w, e->x, e->y);
+		cursor_draw(cnr);
+		display_refresh(my_window);
+		cursor_info();
+	}
 
 	return FALSE;
 }
@@ -492,11 +494,8 @@ gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 static
 gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
-	if(cursor_active) {
-		cursor_active = 0;
-		cursor_info();
+	if(e->button == GDK_BUTTON1_MASK)
 		return FALSE;
-	}
 	
 	fl_pan = 0;
 	return FALSE;
@@ -509,6 +508,10 @@ gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 	convert_coords(&mx, &my, w, e->x, e->y);
 
 	if(e->direction > 0) {
+
+		if(zoom_factor == 2)
+			return FALSE;
+
 		pan_x = pan_x - mx * zoom_factor;
 		pan_y = pan_y - my * zoom_factor;
 
@@ -516,6 +519,9 @@ gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 		if(zoom_factor > 2)
 			zoom_factor = 2;
 	} else {
+		if(zoom_factor == 0.005)
+			return FALSE;
+
 		zoom_factor /= 2;
 		if(zoom_factor < 0.005)
 			zoom_factor = 0.005;
@@ -532,6 +538,10 @@ static
 gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
 	switch(e->keyval) {
+		case GDK_C:
+			cursor_set[0] = cursor_set[1] = 0;
+			display_refresh(my_window);
+			break;
 		case GDK_c:
 			cursor_source ^= 1;
 			cursor_draw(0);
