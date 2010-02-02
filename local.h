@@ -1,5 +1,5 @@
-#ifndef HANTEK_LOCAL_H
-#define HANTEK_LOCAL_H
+#ifndef DSODA_LOCAL_H
+#define DSODA_LOCAL_H
 
 #include <stdio.h>
 

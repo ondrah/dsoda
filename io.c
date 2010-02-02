@@ -45,7 +45,6 @@ int dso_adjust_buffer(unsigned int size)
 
 	free(my_buffer);
 	my_buffer = malloc(size * 2);
-	memset(my_buffer, 0, my_buffer_size * 2);
 	return 0;
 }
 

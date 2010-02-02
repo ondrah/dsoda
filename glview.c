@@ -10,6 +10,7 @@
 
 #include "io.h"
 #include "local.h"
+#include "gui.h"
 
 static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
@@ -41,11 +42,21 @@ static int cursor_source = 0;	// channel source (target)
 
 #define MARGIN_CANVAS	0.05
 
-#define CHANNEL1_RGB	0.0f, 1.0f, 0.0f
-#define CHANNEL2_RGB	1.0f, 1.0f, 0.0f
+GLushort channel_rgba[3][4] = {{0,0xffff,0,0x8000}, {0xffff,0xffff,0,0x8000},{0xffff,0,0,0x8000}};
 
 int dpIndex = 0;
 int interpolationMode = 1;
+
+void display_refresh(GtkWidget *da);
+
+void gui_channel_set_color(unsigned int channel_id, int red, int green, int blue)
+{
+	channel_rgba[channel_id][0] = red;
+	channel_rgba[channel_id][1] = green;
+	channel_rgba[channel_id][2] = blue;
+
+	display_refresh(my_window);
+}
 
 static
 void gl_done()
@@ -105,17 +116,15 @@ void update_screen()
 		trigger_point -= my_buffer_size;
 	}
 
-	for (int t = 0 ; t < MAX_CHANNELS; t++) {
+	float overlap = ((float)my_buffer_size/10000) / 2;
+
+	for (int t = 0 ; t < 2; t++) {
 		if(!capture_ch[t])
 			continue;
 
 		glNewList(gl_channels + t, GL_COMPILE);
 		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
-		if(!t) {
-			glColor4f(CHANNEL2_RGB, 0.5);
-		} else {
-			glColor4f(CHANNEL1_RGB, 0.5);
-		}
+		glColor4usv(channel_rgba[t]);
 
 //		for (int i = trigger_point; i < my_buffer_size; i++) {
 //			glVertex2f(DIVS_H * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
@@ -124,12 +133,11 @@ void update_screen()
 //			glVertex2f(DIVS_H * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
 //		}
 
-		float overlap = ((float)my_buffer_size/10000) / 2;
 		int x = trigger_point;
 		for (int i = 0; i < my_buffer_size; i++, x++) {
 			if(x >= my_buffer_size)
 				x = 0;
-			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), DIVS_V * my_buffer[2*x + t] / 256.0 - DIVS_V / 2.0);
+			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), DIVS_V * my_buffer[2*x + (1-t)] / 256.0 - DIVS_V / 2.0);
 		}
 
 		glEnd();
@@ -139,19 +147,42 @@ void update_screen()
 	if(fl_math) {
 		glNewList(gl_math, GL_COMPILE);
 		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
-		glColor4f(1.0f, 0.0f, 0.0f, 0.5);
+		glColor4usv(channel_rgba[2]);
+
+		int o0 = offset_ch[0] * 0xff;
+		int o1 = offset_ch[1] * 0xff;
 
 		int x = trigger_point;
-		for (int i = 0; i < my_buffer_size; i++, x++) {
+		for(int i = 0; i < my_buffer_size; i++, x++) {
 			if(x >= my_buffer_size)
 				x = 0;
-			int v = (my_buffer[2*x] + my_buffer[2*x + 1] ) >> 1;
-			glVertex2f(DIVS_H * ((float)i / my_buffer_size - 0.5) /* * SCALE_FACTOR */, DIVS_V * v / 256.0 - DIVS_V / 2.0);
+
+			float c0 = (my_buffer[2*x + 1] - o0) / 32.0 * nr_voltages[voltage_ch[0]];
+		   	float c1 = (my_buffer[2*x] - o1) / 32.0 * nr_voltages[voltage_ch[1]];
+
+			float a, b;
+			a = math_source[0] ? c1 : c0;
+			b = math_source[1] ? c1 : c0;
+
+			float r;
+			switch(math_op) {
+				case M_ADD:
+					r = a + b;
+					break;
+				case M_SUB:
+					r = a - b;
+					break;
+				case M_MUL:
+					r = a * b;
+					break;
+				/*case M_DIV:
+					r = a / b;
+					break;*/
+			}
+
+			r = r / nr_voltages[voltage_ch[CH_M]];
+			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), r + DIVS_V * (offset_ch[CH_M] - 0.5));
 		}
-//		for (int i = 0; i < trigger_point; i++) {
-//			int v = (my_buffer[2*i] + my_buffer[2*i + 1] ) >> 1;
-//			glVertex2f(DIVS_H * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * v / 256.0 - DIVS_V / 2.0);
-//		}
 
 		glEnd();
 		glEndList();
@@ -166,6 +197,19 @@ void update_screen()
 	glVertex2f((position_t - 0.5) * DIVS_H, +DIVS_V/2);
 	glVertex2f(-DIVS_H/2, (offset_t - 0.5) * DIVS_V);
 	glVertex2f(+DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+
+	if(capture_ch[0]) {
+		glColor4usv(channel_rgba[0]);
+		glVertex2f(-DIVS_H/2, (offset_ch[0] - 0.5) * DIVS_V);
+		glVertex2f(+DIVS_H/2, (offset_ch[0] - 0.5) * DIVS_V);
+	}
+
+	if(capture_ch[1]) {
+		glColor4usv(channel_rgba[1]);
+		glVertex2f(-DIVS_H/2, (offset_ch[1] - 0.5) * DIVS_V);
+		glVertex2f(+DIVS_H/2, (offset_ch[1] - 0.5) * DIVS_V);
+	}
+
 	glEnd();
 	glDisable(GL_LINE_STIPPLE);
 	glEndList();
@@ -403,10 +447,7 @@ void cursor_draw(int i)
 		glEnable(GL_LINE_STIPPLE);
 	glBegin(GL_LINE_STRIP);
 
-	if(cursor_source == 0)
-		glColor4f(CHANNEL1_RGB, 0.8);
-	else
-		glColor4f(CHANNEL2_RGB, 0.8);
+	glColor4us(channel_rgba[cursor_source][0], channel_rgba[cursor_source][1], channel_rgba[cursor_source][2], 0xEEEE);
 
 	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -DIVS_V / 2);
 	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, DIVS_V / 2);
@@ -467,8 +508,8 @@ static
 void cursor_info()
 {
 	float time_base = (float)samples_in_grid / DIVS_H * (1000000.0 / gui_get_sampling_rate());
-	float v = get_channel_voltage(cursor_source);
-	float o = (get_channel_offset(cursor_source) - 0.5) * DIVS_V;
+	float v = nr_voltages[voltage_ch[cursor_source]];
+	float o = (offset_ch[cursor_source] - 0.5) * DIVS_V;
 	float dx = (cursor[1].x - cursor[0].x) * time_base * zoom_factor / x_factor;
 	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
 	char *str_vu = "V";
@@ -558,7 +599,7 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			display_refresh(my_window);
 			break;
 		case GDK_c:
-			cursor_source ^= 1;
+			cursor_source = (cursor_source + 1) % 3;
 			cursor_draw(0);
 			cursor_draw(1);
 			display_refresh(my_window);
