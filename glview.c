@@ -13,7 +13,7 @@
 
 static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
-static int gl_channels, gl_grid, gl_math, gl_cursor;
+static int gl_channels, gl_grid, gl_math, gl_cursor, gl_trigger;
 static int fl_pan = 0, fl_pan_ready = 0;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
@@ -72,6 +72,7 @@ void gl_init()
     gl_channels = glGenLists(MAX_CHANNELS);
     gl_math = glGenLists(1);
 	gl_cursor = glGenLists(2);
+	gl_trigger = glGenLists(1);
     glShadeModel(GL_SMOOTH);
     glLineStipple (1, 0x00FF);
 }
@@ -156,6 +157,19 @@ void update_screen()
 		glEndList();
 	}
 
+	// draw trigger offset + position
+	glNewList(gl_trigger, GL_COMPILE);
+	glColor4f(0.0, 0.0, 0.7, 0.7);
+	glEnable(GL_LINE_STIPPLE);
+	glBegin(GL_LINES);
+	glVertex2f((position_t - 0.5) * DIVS_H, -DIVS_V/2);
+	glVertex2f((position_t - 0.5) * DIVS_H, +DIVS_V/2);
+	glVertex2f(-DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+	glVertex2f(+DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+	glEnd();
+	glDisable(GL_LINE_STIPPLE);
+	glEndList();
+
               //  glDisable(GL_LINE_SMOOTH);
 				glClear(GL_COLOR_BUFFER_BIT);
 				if(capture_ch[0])
@@ -169,6 +183,7 @@ void update_screen()
 					glCallList(gl_cursor);
 				if(cursor_set[1])
 					glCallList(gl_cursor + 1);
+				glCallList(gl_trigger);
                 glPopMatrix();
             /*    break;
 

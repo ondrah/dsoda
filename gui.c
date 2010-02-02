@@ -35,7 +35,7 @@ static int trigger_position;
 static int selected_channels = SELECT_CH1CH2;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
-static float offset_ch[2] = { 0.66, 0.33}, offset_t = 0.66, position_t = 0.5;
+float offset_ch[2] = { 0.66, 0.33 }, offset_t = 0.66, position_t = 0.5;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
@@ -79,8 +79,6 @@ volatile int dso_trigger_mode = TRIGGER_AUTO;
 static GtkWidget *display_area;
 static GtkWidget *box;
 static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
-
-#define VOID_PTR(a)		((void *)a)
 
 float get_channel_voltage(int ch)
 {
@@ -261,6 +259,18 @@ offset_ch_cb(GtkAdjustment *adj, int ch)
 	update_offset();
 }
 
+GdkColor color_ch[2] = {
+	{0,0x00,0xffff,0x00},
+	{1,0xffff,0xffff,0x00},
+};
+
+static
+void color_changed_cb(GtkColorButton *cb, int ch)
+{
+	DMSG("color changed, ch %d\n", ch);
+
+}
+
 static
 GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *parent)
 {
@@ -276,14 +286,14 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 	for(int i=0;i<SCALAR(str_voltages);i++)
 		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_voltage), i, str_voltages[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_voltage), voltage_ch[channel_id]);
-	g_signal_connect(G_OBJECT(c_voltage), "changed", G_CALLBACK(voltage_changed_cb), VOID_PTR(channel_id));
+	g_signal_connect(G_OBJECT(c_voltage), "changed", G_CALLBACK(voltage_changed_cb), GINT_TO_POINTER(channel_id));
 
 	// attenuation
 	GtkWidget *c_attenuation = gtk_combo_box_new_text();
 	for(int i=0;i<SCALAR(str_attenuations);i++)
 		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_attenuation), i, str_attenuations[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_attenuation), 0);
-	g_signal_connect(GTK_OBJECT(c_attenuation), "changed", G_CALLBACK (attenuation_cb), VOID_PTR(channel_id));
+	g_signal_connect(GTK_OBJECT(c_attenuation), "changed", G_CALLBACK (attenuation_cb), GINT_TO_POINTER(channel_id));
 
 	// coupling
 	GtkWidget *c_coupling= gtk_combo_box_new_text();
@@ -291,22 +301,26 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 1, "DC");
 	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 2, "OFF");
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_coupling), coupling_ch[channel_id]);
-	g_signal_connect(GTK_OBJECT(c_coupling), "changed", G_CALLBACK (coupling_cb), VOID_PTR(channel_id));
+	g_signal_connect(GTK_OBJECT(c_coupling), "changed", G_CALLBACK (coupling_cb), GINT_TO_POINTER(channel_id));
 //	GtkWidget *enabled = gtk_check_button_new_with_label("capture");
 //	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(enabled), 1);
 //	g_signal_connect(GTK_OBJECT (enabled), "toggled", G_CALLBACK (capture_cb),
 //		VOID_PTR(channel_id));
+	GtkWidget *c_color = gtk_color_button_new_with_color(&color_ch[channel_id]);
+	g_signal_connect(G_OBJECT(c_color), "color-set", G_CALLBACK(color_changed_cb), GINT_TO_POINTER(channel_id));
+
 
 	//gtk_box_pack_start(GTK_BOX(hb), enabled, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_voltage, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_attenuation, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_coupling, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hb), c_color, FALSE, FALSE, 0);
 
 // channel levels, trigger level, trigger position, display area
 	GtkObject *lev_ch = gtk_adjustment_new(offset_ch[channel_id], 0.0, 1.0, 0, 0, 0);
     GtkWidget *scale_ch = gtk_hscale_new(GTK_ADJUSTMENT(lev_ch));
     scale_configure(GTK_SCALE(scale_ch));
-	g_signal_connect(G_OBJECT(lev_ch), "value_changed", G_CALLBACK(offset_ch_cb), VOID_PTR(channel_id));
+	g_signal_connect(G_OBJECT(lev_ch), "value_changed", G_CALLBACK(offset_ch_cb), GINT_TO_POINTER(channel_id));
 
 	gtk_box_pack_start(GTK_BOX(vb), scale_ch, TRUE, FALSE, 0);
 
@@ -631,7 +645,7 @@ create_menu(GtkWidget *parent)
 static void
 offset_t_cb(GtkAdjustment *adj)
 {
-	offset_t = 1 - adj->value;
+	offset_t = adj->value;
 	update_offset();
 }
 
@@ -642,10 +656,12 @@ position_t_cb(GtkAdjustment *adj)
 
 	position_t = nval;
 	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
-	DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
-	//dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	//DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
 
-	dso_thread_set_cb(&set_trigger_cb);
+	if(!fl_running)
+		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	else
+		dso_thread_set_cb(&set_trigger_cb);
 }
 
 static
