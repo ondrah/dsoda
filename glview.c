@@ -21,8 +21,11 @@ static float press_x, press_y;
 static int x_factor = 1;
 static GtkWidget *my_window;
 static int cursor_set[2] = {0,0};
+static int fl_grid = 1;
 
 static int samples_in_grid = 10000;
+static float overlap = 0.5;
+static int current_buffer_size = 10240;
 
 struct cursor_coord {
 	float x, y;
@@ -48,6 +51,18 @@ int dpIndex = 0;
 int interpolationMode = 1;
 
 void display_refresh(GtkWidget *da);
+
+void gui_update_buffer_size(unsigned int buffer_size)
+{
+	current_buffer_size = buffer_size;
+	int f = 1;
+	while(buffer_size >= 10) {
+		buffer_size /= 10;
+		f *= 10;
+	}
+	f*=buffer_size;
+	overlap = (float)current_buffer_size/f/2;
+}
 
 void gui_channel_set_color(unsigned int channel_id, int red, int green, int blue)
 {
@@ -112,11 +127,9 @@ void update_screen()
 //		return;
 //	}
 
-	while((int)trigger_point > (int)my_buffer_size) {
-		trigger_point -= my_buffer_size;
+	while((int)trigger_point > (int)current_buffer_size) {
+		trigger_point -= current_buffer_size;
 	}
-
-	float overlap = ((float)my_buffer_size/10000) / 2;
 
 	for (int t = 0 ; t < 2; t++) {
 		if(!capture_ch[t])
@@ -126,16 +139,16 @@ void update_screen()
 		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
 		glColor4usv(channel_rgba[t]);
 
-//		for (int i = trigger_point; i < my_buffer_size; i++) {
+//		for (int i = trigger_point; i < current_buffer_size; i++) {
 //			glVertex2f(DIVS_H * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
 //		}
 //		for (int i = 0; i < trigger_point; i++) {
-//			glVertex2f(DIVS_H * ((i + my_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
+//			glVertex2f(DIVS_H * ((i + current_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
 //		}
 
 		int x = trigger_point;
-		for (int i = 0; i < my_buffer_size; i++, x++) {
-			if(x >= my_buffer_size)
+		for(int i = 0; i < current_buffer_size; i++, x++) {
+			if(x >= current_buffer_size)
 				x = 0;
 			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), DIVS_V * my_buffer[2*x + (1-t)] / 256.0 - DIVS_V / 2.0);
 		}
@@ -153,8 +166,8 @@ void update_screen()
 		int o1 = offset_ch[1] * 0xff;
 
 		int x = trigger_point;
-		for(int i = 0; i < my_buffer_size; i++, x++) {
-			if(x >= my_buffer_size)
+		for(int i = 0; i < current_buffer_size; i++, x++) {
+			if(x >= current_buffer_size)
 				x = 0;
 
 			float c0 = (my_buffer[2*x + 1] - o0) / 32.0 * nr_voltages[voltage_ch[0]];
@@ -222,12 +235,14 @@ void update_screen()
 					glCallList(gl_channels + 1);
 				if(fl_math)
 					glCallList(gl_math);
-                glCallList(gl_grid);
+				if(fl_grid) {
+					glCallList(gl_grid);
+					glCallList(gl_trigger);
+				}
 				if(cursor_set[0])
 					glCallList(gl_cursor);
 				if(cursor_set[1])
 					glCallList(gl_cursor + 1);
-				glCallList(gl_trigger);
                 glPopMatrix();
             /*    break;
 
@@ -621,6 +636,10 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 		case GDK_Shift_L:
 			fl_pan_ready = 1;
 			gdk_window_set_cursor(w->window, cursor_hand);
+			break;
+		case GDK_g:
+			fl_grid ^= 1;
+			display_refresh(my_window);
 			break;
 		case GDK_Escape:
 			pan_x = pan_y = 0;

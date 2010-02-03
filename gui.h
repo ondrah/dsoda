@@ -14,4 +14,6 @@ enum { CH_1 = 0, CH_2, CH_M };
 extern float nr_voltages[];
 extern int voltage_ch[3];
 
+void gui_update_buffer_size(unsigned int buffer_size);
+
 #endif

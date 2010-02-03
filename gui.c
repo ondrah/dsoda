@@ -23,6 +23,7 @@
 #define APPNAME		APPNAME0 " " APPNAME1
 #define ICON_FILE	"dsoda-icon.png"
 #define DSODA_URL	"http://dsoda.sf.net"
+#define VERSION		"1.0"
 
 static int fl_running = 0;
 float nr_voltages[] = {0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5};
@@ -49,6 +50,11 @@ unsigned int trigger_point = 0;
 GtkWidget *start_button;
 
 static int p[2];	// dso_thread => gui update mechanism pipe
+
+#define SETUP_BUFFER(sz)	{ \
+	dso_adjust_buffer(sz); \
+	gui_update_buffer_size(sz); \
+}
 
 enum
 {
@@ -360,7 +366,7 @@ static
 void buffer_size_cb()
 {
 	buffer_size_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_bsize));
-	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
+	SETUP_BUFFER(nr_buffer_sizes[buffer_size_idx]);
 	//DMSG("buffer sizes other than 10240 not supported\n");
 	if(dso_initialized)
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
@@ -395,9 +401,9 @@ void gui_about()
 {
 	GtkWidget *dialog = gtk_about_dialog_new();
 	gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dialog), APPNAME);
-	gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), "0.1"); 
-	gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dialog), "(c) ond");
-	gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dialog), APPNAME " is a simple frontend for the \"DSO-2250 USB\".");
+	gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), VERSION); 
+	gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dialog), "Copyright © 2010 Ondra Havel");
+	gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dialog), APPNAME " is a simple frontend for the \"DSO-2250 USB\" oscilloscope.");
 	gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(dialog), DSODA_URL);
 	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(ICON_FILE, NULL);
 	gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(dialog), pixbuf);
@@ -984,7 +990,7 @@ main(gint argc, char *argv[])
 
 	dso_period_usec = COMPUTE_PERIOD_USEC;
 
-	dso_adjust_buffer(nr_buffer_sizes[buffer_size_idx]);
+	SETUP_BUFFER(nr_buffer_sizes[buffer_size_idx]);
 	for(int i = 0; i < nr_buffer_sizes[buffer_size_idx]; i++) {
 		my_buffer[i*2 + 1] = offset_ch[0] * 0xff;
 		my_buffer[i*2] = offset_ch[1] * 0xff;

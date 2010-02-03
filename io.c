@@ -218,14 +218,13 @@ int dso_read_control(unsigned char request, void *buffer, int len, int value, in
 int dso_begin_command()
 {
 	int ret;
-    //unsigned char c[10] = { 0x0F, 0x03, 0x03, 0x03, 0xec, 0xfc, 0xf4, 0x00, 0xec, 0xfc};
-    unsigned char c[10] = { 0x0F, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    if((ret = dso_write_control(C_BEGINCOMMAND, c, sizeof(c), 0, 0)) < 0) {
+	char c = 0;
+    if((ret = dso_write_control(C_BEGINCOMMAND, &c, 1, 0, 0)) < 0) {
 		DMSG("dso_write_control failed\n");
 		return ret;
 	}
 
-    if((ret = dso_read_control(C_GETSPEED, c, sizeof(c), 0, 0)) < 0) {
+    if((ret = dso_read_control(C_GETSPEED, &c, 1, 0, 0)) < 0) {
 		DMSG("dso_read_control failed\n");
 		return ret;
     }
@@ -233,9 +232,6 @@ int dso_begin_command()
 	return 0;
 }
 
-/*!
-    \fn HantekDSOIO::dsoSetFilter(int channel1, int channel2, int trigger)
- */
 int dso_set_filter(int hf_reject)
 {
 	dso_lock();
@@ -245,18 +241,18 @@ int dso_set_filter(int hf_reject)
         return rv;
     }
 
-    unsigned char command[8] = {B_SET_FILTER, 0x0F, 0, 0, 0, 0, 0, 0};
+    unsigned char command[4] = {B_SET_FILTER, 0x0F, 0, 0};
     command[2] = hf_reject ? 0x04 : 0x00;
 
     rv = dso_write_bulk(command, sizeof(command));
     if (rv < 0) {
-        DMSG("In function %s", __FUNCTION__);
+        DMSG("write error\n");
 		dso_unlock();
         return rv;
     }
 
 	dso_unlock();
-	DMSG("ok\n");
+	//DMSG("ok\n");
     return 0;
 }
 
@@ -306,7 +302,7 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	ts = triggerSlope == SLOPE_PLUS ? 0x0 : 0x8;
 	bs = bufferSize == 10240 ? 0x06 : 0x0A;		// short buffer 0x02
 
-    u8 c[12];
+    u8 c[8];
 	c[0] = B_CONFIGURE;
 	c[1] = 0x00;
 	c[2] = sampling_speed[my_speed][0] | bs;
@@ -315,13 +311,6 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	c[5] = sampling_speed[my_speed][2];
     c[6] = (u8)triggerPosition;
     c[7] = (u8)(triggerPosition >> 8);
-	c[8] = 0xcd;
-	c[9] = 0xcd;
-	c[10] = 0x07;	// buffer 10k (?)
-	c[11] = 0xcd;
-
-	//cdcd07cd
- //   c[10] = (u8)(triggerPosition >> 16);
 
     rv = dso_write_bulk(c, sizeof(c));
     if (rv < 0) {
@@ -377,10 +366,6 @@ int dso_capture_start()
     return 0;
 }
 
-
-/*!
-    \fn HantekDSOIO::dsoTriggerEnabled()
- */
 int dso_trigger_enabled()
 {
     dso_lock();
@@ -405,10 +390,6 @@ int dso_trigger_enabled()
     return 0;
 }
 
-
-/*!
-    \fn HantekDSOIO::dsoGetChannelData(void *buffer)
- */
 int dso_get_channel_data(void *buffer, int bufferSize)
 {
     dso_lock();
@@ -427,18 +408,11 @@ int dso_get_channel_data(void *buffer, int bufferSize)
         return rv;
     }
 
-//    rv = dso_get_connection_speed();
-//    if (rv < 0) {
-//        dso_unlock();
-//        return rv;
-//    }
-
     int packets = 2 * bufferSize / epInMaxPacketLen;
 //    DMSG("Getting %i packets (%i bytes length), buffer len = %i bytes", packets, epInMaxPacketLen, bufferSize);
 
     for(int i=0; i<packets; i++) {
         rv = dso_read_bulk(buffer + i*epInMaxPacketLen, epInMaxPacketLen);
-		//DMSG("rv = %d\n", rv);
         if (rv < 0) {
             DMSG("read failed\n");
             dso_unlock();
@@ -516,7 +490,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	int step_ch1 = voltage_ch1 / 3;
 	int step_ch2 = voltage_ch2 / 3;
 	
-    u8 c[17];
+    u8 c[8];
 	c[0] = 0x00;
 	c[1] = relays[step_ch1][0][0];
 	c[2] = relays[step_ch1][0][1];
@@ -525,7 +499,6 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	c[5] = relays[step_ch2][1][1];
 	c[6] = coupling_ch1 == COUPLING_AC ? 0x10 : 0xef;
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
-	c[8] = c[9] = c[10] = c[11] = c[12] = c[13] = c[14] = c[15] = c[16] = 0;
 
     if(dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0) < 0) {
 		dso_unlock();
@@ -553,14 +526,10 @@ int dso_get_offsets(struct offset_ranges *or)
 
 int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset)
 {
-    unsigned char offset[17] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    unsigned char offset[6] = {0,0,0,0,0,0};
 
-    //offset[0] = 0x20;
     offset[1] = ch1Offset >> 8;
-    //offset[2] = 0x30;
     offset[3] = ch2Offset >> 8;
-    //offset[4] = 0x20;
     offset[5] = extOffset;
 
     dso_lock();
