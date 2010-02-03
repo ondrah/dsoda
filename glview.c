@@ -12,10 +12,23 @@
 #include "local.h"
 #include "gui.h"
 
+#define MAX_ZOOM	1.5
+#define MIN_ZOOM	0.005
+
+#define DIVS_H	10
+#define DIVS_V 8
+#define VOLTAGE_SCALE	32.0
+#define MARGIN_CANVAS	0.05
+
+#define MAX_XFACTOR	0x100
+
+#define MV	DIVS_V * MAX_ZOOM / 2
+#define MH	DIVS_H * MAX_ZOOM / 2
+
 static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
-static int gl_channels, gl_grid, gl_math, gl_cursor, gl_trigger;
-static int fl_pan = 0, fl_pan_ready = 0;
+static int gl_channels, gl_grid, gl_cursor, gl_trigger;
+static int fl_pan = 0, fl_pan_ready = 0, fl_xfactor = 0;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
 static int x_factor = 1;
@@ -27,6 +40,9 @@ static int samples_in_grid = 10000;
 static float overlap = 0.5;
 static int current_buffer_size = 10240;
 
+enum { I_DOTS = 0, I_LINES };
+static int interpolation_type = I_LINES;
+
 struct cursor_coord {
 	float x, y;
 };
@@ -34,34 +50,21 @@ struct cursor_coord {
 struct cursor_coord cursor[2] = { {.x = 0, .y = 0}, {.x = 0, .y = 0}}; 
 static int cursor_source = 0;	// channel source (target)
 
-#define DP_DEPTH	16
-#define MAX_CHANNELS 2
-
-#define INTERPOLATION_OFF 0
-
-#define DIVS_H	10
-#define DIVS_V 8
-#define VOLTAGE_SCALE	32
-
-#define MARGIN_CANVAS	0.05
-
 GLushort channel_rgba[3][4] = {{0,0xffff,0,0x8000}, {0xffff,0xffff,0,0x8000},{0xffff,0,0,0x8000}};
 
-int dpIndex = 0;
-int interpolationMode = 1;
 
 void display_refresh(GtkWidget *da);
 
 void gui_update_buffer_size(unsigned int buffer_size)
 {
 	current_buffer_size = buffer_size;
-	int f = 1;
+	samples_in_grid = 1;
 	while(buffer_size >= 10) {
 		buffer_size /= 10;
-		f *= 10;
+		samples_in_grid *= 10;
 	}
-	f*=buffer_size;
-	overlap = (float)current_buffer_size/f/2;
+	samples_in_grid*=buffer_size;
+	overlap = (float)current_buffer_size/samples_in_grid/2;
 }
 
 void gui_channel_set_color(unsigned int channel_id, int red, int green, int blue)
@@ -76,10 +79,10 @@ void gui_channel_set_color(unsigned int channel_id, int red, int green, int blue
 static
 void gl_done()
 {
-    if (gl_channels)
-        glDeleteLists(gl_channels, DP_DEPTH*(MAX_CHANNELS+1));
-
-	glDeleteLists(gl_grid, gl_grid);
+	glDeleteLists(gl_channels, 3);
+	glDeleteLists(gl_cursor, 3);
+	glDeleteLists(gl_trigger, 1);
+	glDeleteLists(gl_grid, 1);
 }
 
 static GLuint gl_makegrid();
@@ -92,15 +95,14 @@ void gl_init()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glEnable(GL_POINT_SMOOTH);
-    glPointSize(5);
+    glPointSize(1);
 
 	gl_grid = gl_makegrid();
-    gl_channels = glGenLists(MAX_CHANNELS);
-    gl_math = glGenLists(1);
+    gl_channels = glGenLists(3);
 	gl_cursor = glGenLists(2);
 	gl_trigger = glGenLists(1);
     glShadeModel(GL_SMOOTH);
-    glLineStipple (1, 0x00FF);
+	glLineStipple(1, 0xFF);
 }
 
 static
@@ -120,37 +122,22 @@ void update_screen()
     glLoadIdentity();
     glLineWidth(2);
 
-//	if(!fl_gui_running) {
-//		glClear(GL_COLOR_BUFFER_BIT);
-//		glCallList(gl_grid);
-//		glPopMatrix();
-//		return;
-//	}
-
-	while((int)trigger_point > (int)current_buffer_size) {
+	while((int)trigger_point > (int)current_buffer_size)
 		trigger_point -= current_buffer_size;
-	}
 
 	for (int t = 0 ; t < 2; t++) {
 		if(!capture_ch[t])
 			continue;
 
 		glNewList(gl_channels + t, GL_COMPILE);
-		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
+		glBegin(interpolation_type == I_DOTS ? GL_POINTS : GL_LINE_STRIP);
 		glColor4usv(channel_rgba[t]);
-
-//		for (int i = trigger_point; i < current_buffer_size; i++) {
-//			glVertex2f(DIVS_H * ((i - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
-//		}
-//		for (int i = 0; i < trigger_point; i++) {
-//			glVertex2f(DIVS_H * ((i + current_buffer_size - trigger_point) / 10240.0 - 0.5) /* * SCALE_FACTOR */, DIVS_V * my_buffer[2*i + t] / 256.0 - DIVS_V / 2.0);
-//		}
 
 		int x = trigger_point;
 		for(int i = 0; i < current_buffer_size; i++, x++) {
 			if(x >= current_buffer_size)
 				x = 0;
-			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), DIVS_V * my_buffer[2*x + (1-t)] / 256.0 - DIVS_V / 2.0);
+			glVertex2f(DIVS_H * ((float) i / samples_in_grid - overlap), DIVS_V * my_buffer[2*x + (1-t)] / 256.0 - DIVS_V / 2.0);
 		}
 
 		glEnd();
@@ -158,8 +145,8 @@ void update_screen()
 	}
 
 	if(fl_math) {
-		glNewList(gl_math, GL_COMPILE);
-		glBegin((interpolationMode == INTERPOLATION_OFF)?GL_POINTS:GL_LINE_STRIP);
+		glNewList(gl_channels + 2, GL_COMPILE);
+		glBegin(interpolation_type == I_DOTS ? GL_POINTS : GL_LINE_STRIP);
 		glColor4usv(channel_rgba[2]);
 
 		int o0 = offset_ch[0] * 0xff;
@@ -170,8 +157,8 @@ void update_screen()
 			if(x >= current_buffer_size)
 				x = 0;
 
-			float c0 = (my_buffer[2*x + 1] - o0) / 32.0 * nr_voltages[voltage_ch[0]];
-		   	float c1 = (my_buffer[2*x] - o1) / 32.0 * nr_voltages[voltage_ch[1]];
+			float c0 = (my_buffer[2 * x + 1] - o0) / VOLTAGE_SCALE * nr_voltages[voltage_ch[0]];
+		   	float c1 = (my_buffer[2 * x] - o1) / VOLTAGE_SCALE * nr_voltages[voltage_ch[1]];
 
 			float a, b;
 			a = math_source[0] ? c1 : c0;
@@ -188,141 +175,96 @@ void update_screen()
 				case M_MUL:
 					r = a * b;
 					break;
-				/*case M_DIV:
-					r = a / b;
-					break;*/
 			}
 
 			r = r / nr_voltages[voltage_ch[CH_M]];
-			glVertex2f(DIVS_H * ((float) i / 10000 - overlap), r + DIVS_V * (offset_ch[CH_M] - 0.5));
+			glVertex2f(DIVS_H * ((float) i / samples_in_grid - overlap), r + DIVS_V * (offset_ch[CH_M] - 0.5));
 		}
 
 		glEnd();
 		glEndList();
 	}
 
-	// draw trigger offset + position
-	glNewList(gl_trigger, GL_COMPILE);
-	glColor4f(0.0, 0.0, 0.7, 0.7);
-	glEnable(GL_LINE_STIPPLE);
-	glBegin(GL_LINES);
-	glVertex2f((position_t - 0.5) * DIVS_H, -DIVS_V/2);
-	glVertex2f((position_t - 0.5) * DIVS_H, +DIVS_V/2);
-	glVertex2f(-DIVS_H/2, (offset_t - 0.5) * DIVS_V);
-	glVertex2f(+DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+	if(fl_grid) {
+		// draw trigger offset + position
+		glNewList(gl_trigger, GL_COMPILE);
+		glColor4f(.3, .3, .8, 0.7);
 
-	if(capture_ch[0]) {
-		glColor4usv(channel_rgba[0]);
-		glVertex2f(-DIVS_H/2, (offset_ch[0] - 0.5) * DIVS_V);
-		glVertex2f(+DIVS_H/2, (offset_ch[0] - 0.5) * DIVS_V);
+		glLineStipple(1, 0x1c47);
+		glEnable(GL_LINE_STIPPLE);
+
+		glBegin(GL_LINES);
+
+		glVertex2f((position_t - 0.5) * DIVS_H, -MV);
+		glVertex2f((position_t - 0.5) * DIVS_H, +MV);
+		glVertex2f(-DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+		glVertex2f(+DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+
+		glLineStipple(1, 0x0101);
+		if(capture_ch[0]) {
+			glColor4usv(channel_rgba[0]);
+			glVertex2f(-MH, (offset_ch[0] - 0.5) * DIVS_V);
+			glVertex2f(+MH, (offset_ch[0] - 0.5) * DIVS_V);
+		}
+
+		if(capture_ch[1]) {
+			glColor4usv(channel_rgba[1]);
+			glVertex2f(-MH, (offset_ch[1] - 0.5) * DIVS_V);
+			glVertex2f(+MH, (offset_ch[1] - 0.5) * DIVS_V);
+		}
+
+		if(fl_math) {
+			glColor4usv(channel_rgba[2]);
+			glVertex2f(-MH, (offset_ch[2] - 0.5) * DIVS_V);
+			glVertex2f(+MH, (offset_ch[2] - 0.5) * DIVS_V);
+		}
+
+		glEnd();
+		glDisable(GL_LINE_STIPPLE);
+		glLineStipple(1, 0x00FF);
+		glEndList();
 	}
 
-	if(capture_ch[1]) {
-		glColor4usv(channel_rgba[1]);
-		glVertex2f(-DIVS_H/2, (offset_ch[1] - 0.5) * DIVS_V);
-		glVertex2f(+DIVS_H/2, (offset_ch[1] - 0.5) * DIVS_V);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if(capture_ch[0])
+		glCallList(gl_channels);
+	if(capture_ch[1])
+		glCallList(gl_channels + 1);
+	if(fl_math)
+		glCallList(gl_channels + 2);
+	if(fl_grid) {
+		glCallList(gl_grid);
+		glCallList(gl_trigger);
 	}
-
-	glEnd();
-	glDisable(GL_LINE_STIPPLE);
-	glEndList();
-
-              //  glDisable(GL_LINE_SMOOTH);
-				glClear(GL_COLOR_BUFFER_BIT);
-				if(capture_ch[0])
-					glCallList(gl_channels);
-				if(capture_ch[1])
-					glCallList(gl_channels + 1);
-				if(fl_math)
-					glCallList(gl_math);
-				if(fl_grid) {
-					glCallList(gl_grid);
-					glCallList(gl_trigger);
-				}
-				if(cursor_set[0])
-					glCallList(gl_cursor);
-				if(cursor_set[1])
-					glCallList(gl_cursor + 1);
-                glPopMatrix();
-            /*    break;
-
-			
-            case VIEWMODE_XY:
-                glDisable(GL_LINE_SMOOTH);
-                glCallList(gl_grid);
-                break;
-
-            case VIEWMODE_SPECTRUM:
-                aThread->bufferMutex.lock();
-                unsigned p = aThread->triggerPoint + samplesUntransformed/2;
-                for (unsigned i = 0; i < samplesToTransform; i++, p++)
-                {
-                    if (p >= samplesInBuffer)
-                    {
-                        p -= samplesInBuffer;
-                    }
-                    for (int t = 0; t < MAX_CHANNELS; t++)
-                    {
-                        aThread->fhtBuffer[t][i] = (double)aThread->buffer[p][t];
-                    }
-                }
-                aThread->transform();
-                aThread->bufferMutex.unlock();
-
-                glPushMatrix();
-                glTranslatef(-DIVS_H/2, -DIVS_V/2, 0);
-                glScalef(DIVS_H*timeDiv/transformedSamples, DIVS_V, 1.0);
-                glLineWidth(1);
-                for (int t = 0; t < MAX_CHANNELS; t++)
-                {
-                    glColor4f(chColor[t][0], chColor[t][1], chColor[t][2], chColor[t][3]);
-                    glBegin((interpolationMode == INTERPOLATION_OFF)?GL_LINES:GL_QUADS);
-                    GLfloat viewLen = transformViewLen;
-                    if (interpolationMode != INTERPOLATION_OFF)
-                    {
-                        viewLen--;
-                    }
-                    for (unsigned i = 0; i < viewLen; i++)
-                    {
-                        glVertex2f(i, 0);
-                        glVertex2f(i, aThread->fhtBuffer[t][i+transformViewPos]);
-                        if (interpolationMode != INTERPOLATION_OFF)
-                        {
-                            glVertex2f(i+1, aThread->fhtBuffer[t][i+transformViewPos]);
-                            glVertex2f(i+1, 0);
-                        }
-                    }
-                    glEnd();
-                }
-                glPopMatrix();
-                glDisable(GL_LINE_SMOOTH);
-                glCallList(gl_grid);    // Draw grid
-                break;
-				*/
-
+	if(cursor_set[0])
+		glCallList(gl_cursor);
+	if(cursor_set[1])
+		glCallList(gl_cursor + 1);
+	glPopMatrix();
 }
 
 static
 GLuint gl_makegrid()
 {
-    GLuint list = glGenLists(1);
-    glNewList(list, GL_COMPILE);
+    GLuint g = glGenLists(1);
+    glNewList(g, GL_COMPILE);
     glLineWidth(1);
 
-	glColor4f(0.7, 0.7, 0.7, 0.5);  // Grid Color
+	// draw the grid
+	glColor4f(0.7, 0.7, 0.7, 0.5);
 	glEnable(GL_LINE_STIPPLE);
 	glBegin(GL_LINES);
-	for(GLfloat i=1; i<=DIVS_H/2; i++) {
-		glVertex2f(i, -DIVS_V/2);
-		glVertex2f(i, DIVS_V/2);
-		glVertex2f(-i, -DIVS_V/2);
-		glVertex2f(-i, DIVS_V/2);
+	for(GLfloat i = 1; i <= MV; i++) {
+		glVertex2f(-MH, +i);
+		glVertex2f(+MH, +i);
+		glVertex2f(-MH, -i);
+		glVertex2f(+MH, -i);
 	}
-	for(GLfloat i=1; i<=DIVS_V/2; i++) {
-		glVertex2f(-DIVS_H/2, i);
-		glVertex2f(DIVS_H/2, i);
-		glVertex2f(-DIVS_H/2, -i);
-		glVertex2f(DIVS_H/2, -i);
+	for(GLfloat i = 1; i<= MH; i++) {
+		glVertex2f(+i, -MV);
+		glVertex2f(+i, +MV);
+		glVertex2f(-i, -MV);
+		glVertex2f(-i, +MV);
 	}
 	glEnd();
 
@@ -330,26 +272,26 @@ GLuint gl_makegrid()
 	glColor4f(1.0, 1.0, 1.0, 0.3);
 	glDisable(GL_LINE_STIPPLE);
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_H/2, 0);
-	glVertex2f(DIVS_H/2, 0);
-	glVertex2f(0, -DIVS_V/2);
-	glVertex2f(0, DIVS_V/2);
-	for(GLfloat i=0; i<=DIVS_H/2; i+=0.5) {
-		glVertex2f(i, -0.1);
-		glVertex2f(i, 0.1);
+	glVertex2f(-MH, 0);
+	glVertex2f(+MH, 0);
+	glVertex2f(0, -MV);
+	glVertex2f(0, +MV);
+	for(GLfloat i = 0.5; i <= MH; i++) {
+		glVertex2f(+i, -0.1);
+		glVertex2f(+i, +0.1);
 		glVertex2f(-i, -0.1);
-		glVertex2f(-i, 0.1);
+		glVertex2f(-i, +0.1);
 	}
-	for(GLfloat i=0; i<=DIVS_V/2; i+=0.5) {
-		glVertex2f(-0.1, i);
-		glVertex2f(0.1, i);
+	for(GLfloat i = 0.5; i <= MV; i++) {
+		glVertex2f(-0.1, +i);
+		glVertex2f(+0.1, +i);
 		glVertex2f(-0.1, -i);
-		glVertex2f(0.1, -i);
+		glVertex2f(+0.1, -i);
 	}
 	glEnd();
     glEndList();
 
-    return list;
+    return g;
 }
 
 static void
@@ -464,23 +406,29 @@ void cursor_draw(int i)
 
 	glColor4us(channel_rgba[cursor_source][0], channel_rgba[cursor_source][1], channel_rgba[cursor_source][2], 0xEEEE);
 
-	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -DIVS_V / 2);
-	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, DIVS_V / 2);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, -MV);
+	glVertex2f(ac->x * zoom_factor / x_factor + pan_x, +MV);
 	glEnd();
 
 	glBegin(GL_LINES);
-	glVertex2f(-DIVS_H / 2, ac->y * zoom_factor + pan_y);
-	glVertex2f(DIVS_H / 2, ac->y * zoom_factor + pan_y);
+	glVertex2f(-MH, ac->y * zoom_factor + pan_y);
+	glVertex2f(+MH, ac->y * zoom_factor + pan_y);
 
 	glEnd();
 	if(i == 1)
 		glDisable(GL_LINE_STIPPLE);
+
 	glEndList();
 }
 
 static
 void rezoom()
 {
+	pan_x = MAX(pan_x, -MH + DIVS_H / 2 * zoom_factor / x_factor);
+	pan_x = MIN(pan_x, +MH - DIVS_H / 2 * zoom_factor / x_factor);
+	pan_y = MAX(pan_y, -MV + DIVS_V / 2 * zoom_factor);
+	pan_y = MIN(pan_y, +MV - DIVS_V / 2 * zoom_factor);
+
 	glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glOrtho((-DIVS_H/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_H/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_V/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_V/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
@@ -493,27 +441,19 @@ void rezoom()
 static
 gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 {
-	//DMSG("x = %d, y=%d!\n", (int)e->x, (int)e->y);
 	if(!fl_pan)
 		return FALSE;
 
 	if(w->allocation.width < 0 || w->allocation.height < 0)
 		return FALSE;
 
-	float mx;
-	float my;
+	float mx, my;
 	convert_coords(&mx, &my, w, e->x, e->y);
 	pan_x += (press_x - mx) * zoom_factor / x_factor;
 	pan_y += (press_y - my) * zoom_factor;
 	press_x = mx;
 	press_y = my;
 
-	pan_x = MAX(pan_x, -DIVS_H / 2 /*/ zoom_factor */);
-	pan_x = MIN(pan_x, +DIVS_H / 2 /*/ zoom_factor */ );
-	pan_y = MAX(pan_y, -DIVS_V / 2 /*/ zoom_factor */);
-	pan_y = MIN(pan_y, +DIVS_V / 2 /*/ zoom_factor */);
-
-	//DMSG("px = %f, y=%f\n", pan_x, pan_y);
 	rezoom();
 
 	return FALSE;
@@ -575,27 +515,41 @@ gboolean mouse_button_release_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 static
 gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 {
+	if(fl_xfactor) {
+		if(e->direction > 0) {
+			if(x_factor > 1) {
+				x_factor--;
+				rezoom();
+			}
+		} else {
+			if(x_factor < MAX_XFACTOR) {
+				x_factor++;
+				rezoom();
+			}
+		}
+		return FALSE;
+	}
+
 	float mx, my;
 	convert_coords(&mx, &my, w, e->x, e->y);
 
 	if(e->direction > 0) {
-
-		if(zoom_factor == 2)
+		if(zoom_factor == MAX_ZOOM)
 			return FALSE;
 
 		pan_x = pan_x - mx * zoom_factor;
 		pan_y = pan_y - my * zoom_factor;
 
 		zoom_factor *= 2;
-		if(zoom_factor > 2)
-			zoom_factor = 2;
+		if(zoom_factor > MAX_ZOOM)
+			zoom_factor = MAX_ZOOM;
 	} else {
-		if(zoom_factor == 0.005)
+		if(zoom_factor == MIN_ZOOM)
 			return FALSE;
 
 		zoom_factor /= 2;
-		if(zoom_factor < 0.005)
-			zoom_factor = 0.005;
+		if(zoom_factor < MIN_ZOOM)
+			zoom_factor = MIN_ZOOM;
 
 		pan_x = pan_x + mx * zoom_factor;
 		pan_y = pan_y + my * zoom_factor;
@@ -620,22 +574,17 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			display_refresh(my_window);
 			break;
 		case GDK_i:
-			interpolationMode ^= 1;
+			interpolation_type ^= 1;
 			display_refresh(my_window);
 			break;
-		case GDK_z:
-			if(x_factor > 1) {
-				x_factor--;
-				rezoom();
-			}
-			break;
-		case GDK_x:
-			x_factor++;
-			rezoom();
-			break;
 		case GDK_Shift_L:
+		case GDK_Shift_R:
 			fl_pan_ready = 1;
 			gdk_window_set_cursor(w->window, cursor_hand);
+			break;
+		case GDK_Control_L:
+		case GDK_Control_R:
+			fl_xfactor = 1;
 			break;
 		case GDK_g:
 			fl_grid ^= 1;
@@ -644,6 +593,7 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 		case GDK_Escape:
 			pan_x = pan_y = 0;
 			zoom_factor = 1;
+			x_factor = 1;
 			rezoom();
 			break;
 	}
@@ -654,9 +604,16 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 static
 gboolean key_release_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
-	if(e->keyval == GDK_Shift_L) {
-		fl_pan_ready = 0;
-		gdk_window_set_cursor(w->window, cursor_cross);
+	switch(e->keyval) {
+		case GDK_Shift_L:
+		case GDK_Shift_R:
+			fl_pan_ready = 0;
+			gdk_window_set_cursor(w->window, cursor_cross);
+			break;
+		case GDK_Control_L:
+		case GDK_Control_R:
+			fl_xfactor = 0;
+			break;
 	}
 
 	return FALSE;

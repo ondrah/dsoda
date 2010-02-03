@@ -344,19 +344,21 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 static
 void update_time_per_window()
 {
+	dso_period_usec = COMPUTE_PERIOD_USEC;
+	DMSG("period = %d\n", dso_period_usec);
+
 	char buf[64];
-	float t = (float)nr_buffer_sizes[buffer_size_idx] / nr_sampling_rates[sampling_rate_idx];
-	float r = t;
+	float r = dso_period_usec;
 	char *unit;
 
-	if(t < 0.001) {
-		r *= 1000000;
-		unit = "µs";
-	} else if(t < 1) {
-		r *= 1000;
+	if(dso_period_usec > 1000000) {
+		r /= 1000000;
+		unit = "s";
+	} else if(dso_period_usec > 1000) {
+		r /= 1000;
 		unit = "ms";
 	} else {
-		unit = "s";
+		unit = "µs";
 	}
 	snprintf(buf,sizeof(buf),"%g %s", r, unit);
 	gtk_label_set_text(GTK_LABEL(time_per_window), buf);
@@ -385,9 +387,6 @@ void sampling_rate_cb()
 	sampling_rate_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_srate));
 	update_time_per_window();
 
-	dso_period_usec = COMPUTE_PERIOD_USEC;
-		DMSG("period = %d\n", dso_period_usec);
-
 	if(!dso_initialized) {
 		simul_generate();
 		return;
@@ -400,6 +399,9 @@ static
 void gui_about()
 {
 	GtkWidget *dialog = gtk_about_dialog_new();
+	GdkPixbuf *icon_pixbuf = gdk_pixbuf_new_from_file(ICON_FILE, 0);
+	gtk_window_set_icon(GTK_WINDOW(dialog), icon_pixbuf);
+	g_object_unref(icon_pixbuf);
 	gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dialog), APPNAME);
 	gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), VERSION); 
 	gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dialog), "Copyright © 2010 Ondra Havel");
@@ -411,15 +413,6 @@ void gui_about()
 	gtk_dialog_run(GTK_DIALOG (dialog));
 	gtk_widget_destroy(dialog);
 }
-
-
-// get currently selected time step of suitable time unit
-//static
-//float get_time_step()
-//{
-//	return nr_time_steps[sampling_rate_idx];
-//}
-//
 
 static
 void load_file(char *fname)
@@ -704,29 +697,8 @@ GtkWidget *create_display_window()
 
 	create_menu(box1);
 
-	gtk_box_pack_start (GTK_BOX (box1), gtk_hseparator_new (), FALSE, FALSE, 0);
-
 	display_area = display_create_widget(w);
 
-	// scale + graph table (display panel)
-	//GtkWidget *dp = gtk_table_new(3, 2, FALSE);
-	//GtkWidget *hb = gtk_hbox_new(FALSE, 0);
-	//gtk_box_pack_start(GTK_BOX(hb), scale_ch1, FALSE, FALSE, 0);
-	//gtk_box_pack_start(GTK_BOX(hb), scale_ch2, FALSE, FALSE, 0);
-
-	//gtk_table_attach(GTK_TABLE(dp), position_t, 1, 2, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
-	//gtk_table_attach(GTK_TABLE(dp), hb, 0, 1, 1, 2, GTK_SHRINK, GTK_FILL, 0, 0);
-	//gtk_table_attach(GTK_TABLE(dp), display_area, 1, 2, 1, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
-	//gtk_table_attach(GTK_TABLE(dp), scale_t, 2, 3, 1, 2, GTK_SHRINK, GTK_FILL, 0, 0);
-//----
-//	GtkWidget *dp = gtk_hbox_new(FALSE, 0);
-//	gtk_box_pack_start(GTK_BOX(dp), scale_ch1, FALSE, FALSE, 0);
-//	gtk_box_pack_start(GTK_BOX(dp), scale_ch2, FALSE, FALSE, 0);
-//	gtk_box_pack_start(GTK_BOX(dp), display_area, TRUE, TRUE, 0);
-//	gtk_box_pack_start(GTK_BOX(dp), scale_t, FALSE, FALSE, 0);
-//	gtk_box_pack_start(GTK_BOX(box1), position_t, FALSE, FALSE, 0);
-//	gtk_box_pack_start(GTK_BOX(box1), dp, TRUE, TRUE, 0);
-//----
 	gtk_box_pack_end(GTK_BOX(box1), display_area, TRUE, TRUE, 0);
 
 	gtk_widget_show_all(w);
