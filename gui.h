@@ -1,5 +1,15 @@
-#ifndef HANTEK_GUI_H
-#define HANTEK_GUI_H
+/*
+     _ _       _ _        _                 _       
+  __| (_) __ _(_) |_ __ _| |  ___  ___   __| | __ _ 
+ / _` | |/ _` | | __/ _` | | / __|/ _ \ / _` |/ _` |
+| (_| | | (_| | | || (_| | | \__ \ (_) | (_| | (_| |
+ \__,_|_|\__, |_|\__\__,_|_| |___/\___/ \__,_|\__,_|
+         |___/                written by Ondra Havel
+
+*/
+
+#ifndef DSODA_GUI_H
+#define DSODA_GUI_H
 
 //gint dso_update_gui();
 void gui_channel_set_color(unsigned int channel_id, int red, int green, int blue);

@@ -1,3 +1,13 @@
+/*
+     _ _       _ _        _                 _       
+  __| (_) __ _(_) |_ __ _| |  ___  ___   __| | __ _ 
+ / _` | |/ _` | | __/ _` | | / __|/ _ \ / _` |/ _` |
+| (_| | | (_| | | || (_| | | \__ \ (_) | (_| | (_| |
+ \__,_|_|\__, |_|\__\__,_|_| |___/\___/ \__,_|\__,_|
+         |___/                written by Ondra Havel
+
+*/
+
 #define _XOPEN_SOURCE
 #define _POSIX_SOURCE
 
@@ -415,11 +425,6 @@ void gui_about()
 }
 
 static
-void load_file(char *fname)
-{
-}
-
-static
 unsigned int find_trigger(unsigned int triggerPoint)
 {
     unsigned int var_1 = 1;
@@ -525,32 +530,6 @@ void dso_update_gui()
 }
 
 static
-void load_file_cb()
-{
-	//DMSG("opening file\n");
-
-	GtkWidget *gw = gtk_file_chooser_dialog_new("Open log file",
-		//	GTK_WINDOW(window),
-			NULL,
-			GTK_FILE_CHOOSER_ACTION_OPEN, 
-			GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-			GTK_STOCK_OK, GTK_RESPONSE_OK,
-			NULL);
-
-	gtk_dialog_run (GTK_DIALOG (gw));
-
-	gchar *fname = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(gw));
-	if(!fname) {
-		printf("no file chosen\n");
-	} else {
-		printf("loading '%s'..\n", fname);
-		load_file(fname);
-	}
-
-	gtk_widget_destroy(gw);
-}
-
-static
 void save_file_cb()
 {
 	GtkWidget *gw = gtk_file_chooser_dialog_new("Save current buffer",
@@ -597,8 +576,6 @@ void save_file_cb()
 			my_buffer_size,
 			str_sampling_rates[sampling_rate_idx]
 			);
-//	int c1d = offset_ranges[0][voltage_ch[0]][1] - offset_ranges[0][voltage_ch[0]][0];
-//	int c2d = offset_ranges[1][voltage_ch[1]][1] - offset_ranges[1][voltage_ch[1]][0];
 	for(int i = 0; i < my_buffer_size; i++) {
 		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch[0] * 0xff) * nr_voltages[voltage_ch[0]] / 32.0, (my_buffer[2*i] - offset_ch[1] * 0xff) * nr_voltages[voltage_ch[1]] / 32.0);
 	}
@@ -609,11 +586,8 @@ static void
 create_menu(GtkWidget *parent)
 {
     GtkWidget *file_submenu = gtk_menu_new();
-	GtkWidget *open_item = gtk_menu_item_new_with_label("Open");
 	GtkWidget *save_item = gtk_menu_item_new_with_label("Save");
-	g_signal_connect(open_item, "activate", G_CALLBACK(load_file_cb), 0);
 	g_signal_connect(save_item, "activate", G_CALLBACK(save_file_cb), 0);
-	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), open_item);
 	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), save_item);
 	//GtkWidget *clear_item = gtk_menu_item_new_with_label ("Clear");
 	//g_signal_connect_swapped (clear_item, "activate", G_CALLBACK (clear_graph_cb), 0);
@@ -631,13 +605,10 @@ create_menu(GtkWidget *parent)
 	gtk_menu_shell_append (GTK_MENU_SHELL (help_submenu), about_item);
 
 	g_signal_connect_swapped (about_item, "activate", G_CALLBACK (gui_about), 0);
-	//gtk_widget_show (about_item);
 
     GtkWidget *help_menu = gtk_menu_item_new_with_label ("Help");
 	gtk_menu_item_set_right_justified(GTK_MENU_ITEM(help_menu), 1);
 	gtk_menu_item_set_submenu (GTK_MENU_ITEM (help_menu), help_submenu);
-
-//    gtk_widget_show (root_menu);
 
 	GtkWidget *menu_bar = gtk_menu_bar_new();
 	gtk_menu_shell_append (GTK_MENU_SHELL (menu_bar), file_menu);
