@@ -79,6 +79,6 @@ for(@symbols) {
 
 open F,'>',"$model.rules" or die "failed opening '$model.rules' for writing: $!";
 print F<<"E";
-SUBSYSTEM=="usb", ACTION=="add", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="04b4/$product_id/*", RUN+="/sbin/fxload -t fx2 -I $firmware_dir/${model}_firmware.hex -s $firmware_dir/${model}_loader.hex -D \$env{DEVNAME}"
+SUBSYSTEM=="usb", ACTION=="add", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="4b4/$product_id/*", RUN="/sbin/fxload -t fx2 -I $firmware_dir/${model}_firmware.hex -s $firmware_dir/${model}_loader.hex -D \$env{DEVNAME}"
 E
 close F;
