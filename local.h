@@ -12,6 +12,7 @@
 #define DSODA_LOCAL_H
 
 #include <stdio.h>
+#include "config.h"
 
 #define DMSG(x...)	{ fprintf(stderr, "%s: ", __FUNCTION__); fprintf(stderr, x); }
 

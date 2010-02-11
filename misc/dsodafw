@@ -8,3 +8,5 @@ if [ ! "$FNAME" ]; then
 fi
 
 /sbin/fxload -t fx2 -I dso2250_firmware.hex -s dso2250_loader.hex -D /proc/bus/usb/$FNAME
+
+dsoda

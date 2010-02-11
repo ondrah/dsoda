@@ -25,8 +25,6 @@
 #define B_CAPTURE_GET_DATA	0x05
 #define B_CAPTURE_GET_STATE	0x06
 #define B_SET_VOLTAGE	0x07
-#define B_LOGICAL_DATA_SET	0x08
-#define B_LOGICAL_DATA_GET	0x09
 
 #define C_COMMAND	0xA2
 #define C_GETSPEED	0xB2
@@ -36,12 +34,6 @@
 
 #define COUPLING_AC	0
 #define COUPLING_DC	1
-
-enum {
-    VALUE_CHANNELLEVEL = 0x08,
-    VALUE_DEVICEADDRESS = 0x0A,
-    VALUE_CALDATA = 0x60
-};
 
 enum {
     SELECT_CH1 = 0,

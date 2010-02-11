@@ -31,7 +31,7 @@
 #define APPNAME0	"Digital"
 #define APPNAME1	"Soda"
 #define APPNAME		APPNAME0 " " APPNAME1
-#define ICON_FILE	"dsoda-icon.png"
+#define ICON_FILE	DSODA_RESOURCE_DIR "dsoda-icon.png"
 #define DSODA_URL	"http://dsoda.sf.net"
 #define VERSION		"1.0"
 
@@ -105,9 +105,6 @@ unsigned int gui_get_sampling_rate()
 	return nr_sampling_rates[sampling_rate_idx];
 }
 
-static gboolean simul_dso();
-static void simul_generate();
-
 static void
 scale_configure(GtkScale *scale)
 {
@@ -118,26 +115,17 @@ scale_configure(GtkScale *scale)
 }
 
 static
-void simul_start()
-{
-	simul_generate();
-	g_timeout_add(1000 / 30, simul_dso, 0);
-}
-
-static
 void start_pressed()
 {
+	if(!dso_initialized)
+		return;
+
 	fl_running ^= 1;
 
 	if(fl_running) {
 		DMSG("running capture\n");
 
 		gtk_button_set_label(GTK_BUTTON(start_button), "Stop");
-
-		if(!dso_initialized) {
-			simul_start();
-			return;
-		}
 
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 		dso_set_filter(reject_hf);
@@ -150,8 +138,7 @@ void start_pressed()
 		if(dso_trigger_mode == TRIGGER_SINGLE)	// should not happen anyway
 			return;
 
-		if(dso_initialized)
-			dso_thread_pause();
+		dso_thread_pause();
 	}
 }
 
@@ -325,15 +312,9 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 2, "OFF");
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_coupling), coupling_ch[channel_id]);
 	g_signal_connect(GTK_OBJECT(c_coupling), "changed", G_CALLBACK (coupling_cb), GINT_TO_POINTER(channel_id));
-//	GtkWidget *enabled = gtk_check_button_new_with_label("capture");
-//	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(enabled), 1);
-//	g_signal_connect(GTK_OBJECT (enabled), "toggled", G_CALLBACK (capture_cb),
-//		VOID_PTR(channel_id));
 	GtkWidget *c_color = gtk_color_button_new_with_color(&color_ch[channel_id]);
 	g_signal_connect(G_OBJECT(c_color), "color-set", G_CALLBACK(color_changed_cb), GINT_TO_POINTER(channel_id));
 
-
-	//gtk_box_pack_start(GTK_BOX(hb), enabled, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_voltage, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_attenuation, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hb), c_coupling, FALSE, FALSE, 0);
@@ -379,7 +360,6 @@ void buffer_size_cb()
 {
 	buffer_size_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_bsize));
 	SETUP_BUFFER(nr_buffer_sizes[buffer_size_idx]);
-	//DMSG("buffer sizes other than 10240 not supported\n");
 	if(dso_initialized)
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	update_time_per_window();
@@ -396,11 +376,6 @@ void sampling_rate_cb()
 {
 	sampling_rate_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_srate));
 	update_time_per_window();
-
-	if(!dso_initialized) {
-		simul_generate();
-		return;
-	}
 
 	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 }
@@ -461,19 +436,14 @@ static
 gint update_gui_cb()
 {
 #define RETVAL TRUE
-	//char c;
-	int i;
-	read(p[0], &i, sizeof(i));
-
-//	if(!fl_running)
-//		return RETVAL;
+	char c;
+	read(p[0], &c, sizeof(c));
 
 	if(!dso_buffer_dirty)
 		return RETVAL;
 
 	pthread_mutex_lock(&buffer_mutex);
 	memcpy(my_buffer, dso_buffer, 2 * dso_buffer_size);
-	//memset(dso_buffer, 0, dso_buffer_size * 2);
 	dso_buffer_dirty = 0;
 	trigger_point = dso_trigger_point;
 	pthread_mutex_unlock(&buffer_mutex);
@@ -490,36 +460,6 @@ gint update_gui_cb()
 #undef RETVAL
 }
 
-static
-gboolean simul_dso()
-{
-	if(!fl_running)
-		return FALSE;
-
-	trigger_point += 10;
-	trigger_point %= 10240;
-	display_refresh(display_area);
-
-	return TRUE;
-}
-
-static
-void simul_generate()
-{
-#define SPEED_FAC	10*3.1415/10240
-#define AX	80
-#define AY	80
-	//int dr = nr_sampling_rates[5], sr = nr_sampling_rates[sampling_rate_idx];
-	//float fac = (float)dr / sr;
-	for(int i = 0; i < my_buffer_size; i++) {
-		my_buffer[2 * i + 0] = AX * sin(i /* fac / 3*/ * SPEED_FAC) + 128;
-		my_buffer[2 * i + 1] = AY * cos(i /* fac / 2*/ * SPEED_FAC) + 128;
-	}
-#undef SPEED_FAC
-#undef AX
-#undef AY
-}
-
 void dso_update_gui()
 {
 	//g_idle_add(update_gui_cb, 0);
@@ -527,6 +467,14 @@ void dso_update_gui()
 	//g_idle_add_full(G_PRIORITY_HIGH_IDLE + 20, update_gui_cb, 0, 0);
 	char c = 'x';
 	write(p[1], &c, 1);
+}
+
+static
+void filter_hf_cb(GtkCheckMenuItem *cm)
+{
+	reject_hf = cm->active;
+	if(dso_initialized)
+		dso_set_filter(reject_hf);
 }
 
 static
@@ -585,34 +533,42 @@ void save_file_cb()
 static void
 create_menu(GtkWidget *parent)
 {
+	// file submenu
     GtkWidget *file_submenu = gtk_menu_new();
 	GtkWidget *save_item = gtk_menu_item_new_with_label("Save");
 	g_signal_connect(save_item, "activate", G_CALLBACK(save_file_cb), 0);
 	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), save_item);
-	//GtkWidget *clear_item = gtk_menu_item_new_with_label ("Clear");
-	//g_signal_connect_swapped (clear_item, "activate", G_CALLBACK (clear_graph_cb), 0);
-	//gtk_menu_shell_append (GTK_MENU_SHELL (file_submenu), clear_item);
 	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), gtk_separator_menu_item_new());
 	GtkWidget *quit_item = gtk_menu_item_new_with_label ("Quit");
 	g_signal_connect_swapped(quit_item, "activate", G_CALLBACK(gtk_main_quit), 0);
 	gtk_menu_shell_append(GTK_MENU_SHELL(file_submenu), quit_item);
 
-    GtkWidget *file_menu = gtk_menu_item_new_with_label ("File");
-	gtk_menu_item_set_submenu (GTK_MENU_ITEM (file_menu), file_submenu);
+	// settings submenu
+    GtkWidget *settings_submenu = gtk_menu_new();
+	GtkWidget *filterhf_item = gtk_check_menu_item_new_with_label("Filter HF");
+	g_signal_connect(filterhf_item, "activate", G_CALLBACK(filter_hf_cb), 0);
+	gtk_menu_shell_append(GTK_MENU_SHELL(settings_submenu), filterhf_item);
 
+	// help submenu
     GtkWidget *help_submenu = gtk_menu_new ();
 	GtkWidget *about_item = gtk_menu_item_new_with_label("About");
 	gtk_menu_shell_append (GTK_MENU_SHELL (help_submenu), about_item);
-
 	g_signal_connect_swapped (about_item, "activate", G_CALLBACK (gui_about), 0);
+
+    GtkWidget *file_menu = gtk_menu_item_new_with_label("File");
+	gtk_menu_item_set_submenu(GTK_MENU_ITEM(file_menu), file_submenu);
+
+    GtkWidget *settings_menu = gtk_menu_item_new_with_label("Settings");
+	gtk_menu_item_set_submenu(GTK_MENU_ITEM(settings_menu), settings_submenu);
 
     GtkWidget *help_menu = gtk_menu_item_new_with_label ("Help");
 	gtk_menu_item_set_right_justified(GTK_MENU_ITEM(help_menu), 1);
 	gtk_menu_item_set_submenu (GTK_MENU_ITEM (help_menu), help_submenu);
 
 	GtkWidget *menu_bar = gtk_menu_bar_new();
-	gtk_menu_shell_append (GTK_MENU_SHELL (menu_bar), file_menu);
-	gtk_menu_shell_append (GTK_MENU_SHELL (menu_bar), help_menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu_bar), file_menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu_bar), settings_menu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu_bar), help_menu);
 
 	gtk_box_pack_start(GTK_BOX(parent), menu_bar, FALSE, FALSE, 0);
 
@@ -964,10 +920,6 @@ main(gint argc, char *argv[])
 	update_time_per_window();
 
 	trigger_position = COMPUTE_TRIGGER_POSITION(position_t);
-//	if(!dso_initialized) {
-//		simul_generate();
-//		g_timeout_add(1000 / 30, simul_dso, 0);
-//	}
 
 	gtk_main ();
 

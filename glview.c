@@ -35,6 +35,9 @@
 #define MV	DIVS_V * MAX_ZOOM / 2
 #define MH	DIVS_H * MAX_ZOOM / 2
 
+#define GRID_COLOR	0xdd, 0xdd, 0xdd, 0x40
+#define AXIS_COLOR	0xff, 0xff, 0xff, 0x80
+
 static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
 static int gl_channels, gl_grid, gl_cursor, gl_trigger;
@@ -154,6 +157,8 @@ void update_screen()
 		glEndList();
 	}
 
+	glLineWidth(1);
+
 	if(fl_math) {
 		glNewList(gl_channels + 2, GL_COMPILE);
 		glBegin(interpolation_type == I_DOTS ? GL_POINTS : GL_LINE_STRIP);
@@ -261,8 +266,7 @@ GLuint gl_makegrid()
     glLineWidth(1);
 
 	// draw the grid
-	glColor4f(0.7, 0.7, 0.7, 0.5);
-	glEnable(GL_LINE_STIPPLE);
+	glColor4ub(GRID_COLOR);
 	glBegin(GL_LINES);
 	for(GLfloat i = 1; i <= MV; i++) {
 		glVertex2f(-MH, +i);
@@ -279,8 +283,7 @@ GLuint gl_makegrid()
 	glEnd();
 
 	// x- and y-axis
-	glColor4f(1.0, 1.0, 1.0, 0.3);
-	glDisable(GL_LINE_STIPPLE);
+	glColor4ub(AXIS_COLOR);
 	glBegin(GL_LINES);
 	glVertex2f(-MH, 0);
 	glVertex2f(+MH, 0);
@@ -573,12 +576,9 @@ static
 gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
 	switch(e->keyval) {
-		case GDK_C:
-			cursor_set[0] = cursor_set[1] = 0;
-			display_refresh(my_window);
-			break;
 		case GDK_c:
 			cursor_source = (cursor_source + 1) % 3;
+			g_print("Switching cursor to %d, (%dV)\n", cursor_source + 1, nr_voltages[voltage_ch[cursor_source]]);
 			cursor_draw(0);
 			cursor_draw(1);
 			display_refresh(my_window);
@@ -604,6 +604,8 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			pan_x = pan_y = 0;
 			zoom_factor = 1;
 			x_factor = 1;
+			cursor_set[0] = cursor_set[1] = 0;
+			display_refresh(my_window);
 			rezoom();
 			break;
 	}

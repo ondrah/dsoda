@@ -169,6 +169,7 @@ void dso_done()
 	usb_close(udh);
 }
 
+static
 int dso_write_bulk(void *buffer, int len)
 {
     int r = -ETIMEDOUT;
@@ -178,6 +179,7 @@ int dso_write_bulk(void *buffer, int len)
 	FAIL_HANDLER(r);
 }
 
+static
 int dso_read_bulk(void *buffer, int len)
 {
     int r = -ETIMEDOUT;
@@ -187,6 +189,7 @@ int dso_read_bulk(void *buffer, int len)
 	FAIL_HANDLER(r);
 }
 
+static
 int dso_write_control(unsigned char request, void *buffer, int len, int value, int index)
 {
     int r = -ETIMEDOUT;
@@ -196,6 +199,7 @@ int dso_write_control(unsigned char request, void *buffer, int len, int value, i
 	FAIL_HANDLER(r);
 }
 
+static
 int dso_read_control(unsigned char request, void *buffer, int len, int value, int index)
 {
     int r = -ETIMEDOUT;
@@ -422,7 +426,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 int dso_get_offsets(struct offset_ranges *or)
 {
     dso_lock();
-    int r = dso_read_control(C_COMMAND, or, sizeof(*or), VALUE_CHANNELLEVEL, 0);
+    int r = dso_read_control(C_COMMAND, or, sizeof(*or), 0x08, 0);
 	dso_unlock();
 
 	FAIL_HANDLER(r);

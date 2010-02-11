@@ -1,0 +1,48 @@
+.TH dsoda 1 "11 February 2010"
+.SH Name
+dsoda \- Digital Soda. A simple front-end for the DSO-2250 USB oscilloscope.
+.SH Usage
+.B dsoda
+or
+.B dsodafw
+.SH Description
+.LP
+The DSO-2250 is an EZ-USB device which needs its firmware loaded before it's
+been used. Depending on installation type of dsoda, the firmware can be loaded
+either automatically via udev by fxload command just after plug-in or manually
+with dsodafw command which is a simple fxload + dsoda shell wrapper.
+
+.SH Mouse Bindings
+
+.B scroll+
+zoom in
+
+.B scroll-
+zoom out
+
+.B shift + left button
+pan
+
+.B ctrl + scroll
+change the x/y ratio
+
+.SH Key Bindings
+.B c
+change cursor source
+
+.B g
+switch grid on/off
+
+.B i
+switch interpolation mode (lines/points)
+
+.B escape
+center the graph, reset zoom, and clear the cursors
+
+.SH See also
+udev, fxload
+
+.PP
+.SH Authors
+Ondra Havel <ondrah@users.sourceforge.net>
+
