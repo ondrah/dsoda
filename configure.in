@@ -1,0 +1,23 @@
+# $Id: configure.in,v 1.10 2008-03-29 10:40:41 ond Exp $
+
+AC_INIT(.)
+
+AC_ISC_POSIX
+AC_PROG_CC
+AC_STDC_HEADERS
+AC_ARG_PROGRAM
+
+AC_CHECK_LIB(pthread,pthread_create)
+AC_CHECK_LIB(usb,usb_open)
+PKG_CHECK_MODULES(GTK, [gtk+-2.0 >= 2.0.0])
+PKG_CHECK_MODULES(GTKGLEX, [gtkglext-1.0 >= 1.0.0])
+
+AC_CHECK_HEADERS(string.h stdlib.h unistd.h sys/time.h)
+
+AC_CHECK_FUNCS(mkfifo)
+
+if test "$ac_cv_prog_gcc" = "yes" ; then
+	CFLAGS="$CFLAGS -Wall"
+fi
+
+AC_OUTPUT(config.h config.mk)
