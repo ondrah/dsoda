@@ -578,7 +578,7 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 	switch(e->keyval) {
 		case GDK_c:
 			cursor_source = (cursor_source + 1) % 3;
-			g_print("Switching cursor to %d, (%dV)\n", cursor_source + 1, nr_voltages[voltage_ch[cursor_source]]);
+			g_print("Switching cursor to %d, (%fV)\n", cursor_source + 1, nr_voltages[voltage_ch[cursor_source]]);
 			cursor_draw(0);
 			cursor_draw(1);
 			display_refresh(my_window);

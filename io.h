@@ -14,6 +14,7 @@
 #include <pthread.h>
 
 #define DEVICE_VENDOR 0x04b5
+#define PRODUCT_ID 0x2250
 #define EP_BULK_OUT 2
 #define EP_BULK_IN  6
 

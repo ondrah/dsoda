@@ -1,1 +1,1 @@
-SUBSYSTEM=="usb", ACTION=="add", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="04b4/2250/*", RUN="/sbin/fxload -t fx2 -I /lib/firmware/dso2250_firmware.hex -s /lib/firmware/dso2250_loader.hex -D $env{DEVNAME}"
+SUBSYSTEM=="usb", ACTION=="add", ENV{DEVTYPE}=="usb_device", ENV{PRODUCT}=="4b4/2250/*", RUN="/sbin/fxload -t fx2 -I /lib/firmware/dso2250_firmware.hex -s /lib/firmware/dso2250_loader.hex -D $env{DEVNAME}"

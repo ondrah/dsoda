@@ -1,6 +1,6 @@
 #ifndef DSODA_CONFIG_H
 #define DSODA_CONFIG_H
 
-#define DSODA_RESOURCE_DIR	"@prefix@/share/dsoda"
+#define DSODA_RESOURCE_DIR	"@prefix@/usr/share/dsoda/"
 
 #endif

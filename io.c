@@ -87,7 +87,7 @@ struct usb_device *dso_open_dev()
 		struct usb_device *dev;
 
 		for (dev = bus->devices; dev; dev = dev->next) {
-			if(dev->descriptor.idVendor == DEVICE_VENDOR && dev->descriptor.idProduct == 0x2250) {
+			if(dev->descriptor.idVendor == DEVICE_VENDOR && dev->descriptor.idProduct == PRODUCT_ID) {
 				return dev;
 			}
 		}
@@ -153,14 +153,14 @@ struct usb_dev_handle *dso_prepare()
 
 int dso_init()
 {
-    if(!(udh = dso_prepare())) {
-        DMSG("Suitable DSO not found");
+	if(!(udh = dso_prepare())) {
+		DMSG("Suitable DSO not found");
 		return -1;
-    }
+	}
 
 	DMSG("DSO found\n");
 	dso_initialized = 1;
-    return 0;
+	return 0;
 }
 
 void dso_done()
@@ -172,8 +172,8 @@ void dso_done()
 static
 int dso_write_bulk(void *buffer, int len)
 {
-    int r = -ETIMEDOUT;
-    for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
+	int r = -ETIMEDOUT;
+	for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
 		r = usb_bulk_write(udh, EP_BULK_OUT | USB_ENDPOINT_OUT, (char*)buffer, len, 1000);
 
 	FAIL_HANDLER(r);
@@ -182,9 +182,9 @@ int dso_write_bulk(void *buffer, int len)
 static
 int dso_read_bulk(void *buffer, int len)
 {
-    int r = -ETIMEDOUT;
-    for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
-        r = usb_bulk_read(udh, EP_BULK_IN | USB_ENDPOINT_IN, (char*)buffer, len, 1000);
+	int r = -ETIMEDOUT;
+	for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
+		r = usb_bulk_read(udh, EP_BULK_IN | USB_ENDPOINT_IN, (char*)buffer, len, 1000);
 
 	FAIL_HANDLER(r);
 }
@@ -192,9 +192,9 @@ int dso_read_bulk(void *buffer, int len)
 static
 int dso_write_control(unsigned char request, void *buffer, int len, int value, int index)
 {
-    int r = -ETIMEDOUT;
-    for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
-        r = usb_control_msg(udh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR, request, value, index, (char*)buffer, len, timeout);
+	int r = -ETIMEDOUT;
+	for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
+		r = usb_control_msg(udh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR, request, value, index, (char*)buffer, len, timeout);
 
 	FAIL_HANDLER(r);
 }
@@ -202,9 +202,9 @@ int dso_write_control(unsigned char request, void *buffer, int len, int value, i
 static
 int dso_read_control(unsigned char request, void *buffer, int len, int value, int index)
 {
-    int r = -ETIMEDOUT;
-    for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
-        r = usb_control_msg(udh, USB_ENDPOINT_IN | USB_TYPE_VENDOR, request, value, index, (char*)buffer, len, timeout);
+	int r = -ETIMEDOUT;
+	for(int i = 0; (r == -ETIMEDOUT) && (i < max_attempts); i++)
+		r = usb_control_msg(udh, USB_ENDPOINT_IN | USB_TYPE_VENDOR, request, value, index, (char*)buffer, len, timeout);
 
 	FAIL_HANDLER(r);
 }
@@ -213,8 +213,8 @@ int dso_begin_command()
 {
 	int r;
 	char c = 0;
-    CHECK((r = dso_write_control(C_BEGINCOMMAND, &c, 1, 0, 0)) >= 0);
-    r = dso_read_control(C_GETSPEED, &c, 1, 0, 0);
+	CHECK((r = dso_write_control(C_BEGINCOMMAND, &c, 1, 0, 0)) >= 0);
+	r = dso_read_control(C_GETSPEED, &c, 1, 0, 0);
 	END_CHECK;
 	FAIL_HANDLER(r);
 }
@@ -222,19 +222,18 @@ int dso_begin_command()
 int dso_set_filter(int hf_reject)
 {
 	dso_lock();
-    int r;
+	int r;
    	CHECK((r = dso_begin_command()) >= 0);
 
-    unsigned char command[4] = {B_SET_FILTER, 0x0F, 0, 0};
-    command[2] = hf_reject ? 0x04 : 0x00;
+	unsigned char command[4] = {B_SET_FILTER, 0x0F, 0, 0};
+	command[2] = hf_reject ? 0x04 : 0x00;
 
-    r = dso_write_bulk(command, sizeof(command));
+	r = dso_write_bulk(command, sizeof(command));
 	END_CHECK;
 
 	dso_unlock();
 	FAIL_HANDLER(r);
 }
-
 
 int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSource, int trigger_slope, int trigger_position, int buffer_size)
 {
@@ -258,8 +257,8 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	{ 0x40, 0xed, 0xff },	// 50S/s
 	};
 
-    dso_lock();
-    int r;
+	dso_lock();
+	int r;
    	CHECK((r = dso_begin_command()) >= 0);
 
 	int sc, ts, bs;
@@ -278,22 +277,22 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	ts = trigger_slope == SLOPE_PLUS ? 0x0 : 0x8;
 	bs = buffer_size == 10240 ? 0x06 : 0x0A;		// short buffer 0x02
 
-    u8 c[11];
+	u8 c[11];
 	c[0] = B_CONFIGURE;
 	c[1] = 0x00;
 	c[2] = sampling_speed[my_speed][0] | bs;
 	c[3] = sc | ts;
 	c[4] = sampling_speed[my_speed][1];
 	c[5] = sampling_speed[my_speed][2];
-    c[6] = (u8)trigger_position;
-    c[7] = (u8)(trigger_position >> 8);
+	c[6] = (u8)trigger_position;
+	c[7] = (u8)(trigger_position >> 8);
 	c[8] = c[9] = 0;
 	c[10] = 0x7;	// trigger position adjustment
 
-    r = dso_write_bulk(c, sizeof(c));
+	r = dso_write_bulk(c, sizeof(c));
 	END_CHECK;
 
-    dso_unlock();
+	dso_unlock();
 	FAIL_HANDLER(r);
 }
 
@@ -301,10 +300,10 @@ int dso_force_trigger()
 {
 	int r;
 	dso_lock();
-    CHECK((r = dso_begin_command()) >= 0);
+	CHECK((r = dso_begin_command()) >= 0);
 
-    unsigned char command[2] = {B_FORCE_TRIGGER, 0};
-    r = dso_write_bulk(command, sizeof(command));
+	unsigned char command[2] = {B_FORCE_TRIGGER, 0};
+	r = dso_write_bulk(command, sizeof(command));
 
 	END_CHECK;
 
@@ -315,10 +314,10 @@ int dso_force_trigger()
 int dso_capture_start()
 {
 	int r;
-    CHECK((r = dso_begin_command(0)) >= 0);
+	CHECK((r = dso_begin_command(0)) >= 0);
 
-    unsigned char command[2] = {B_CAPTURE_START, 0};
-    r = dso_write_bulk(command, sizeof(command));
+	unsigned char command[2] = {B_CAPTURE_START, 0};
+	r = dso_write_bulk(command, sizeof(command));
 	END_CHECK;
 		
 	dso_unlock();
@@ -328,59 +327,59 @@ int dso_capture_start()
 int dso_trigger_enabled()
 {
 	int r;
-    dso_lock();
+	dso_lock();
 
-    CHECK((r = dso_begin_command()) >= 0);
+	CHECK((r = dso_begin_command()) >= 0);
 
-    unsigned char command[2] = {B_TRIGGER_ENABLED, 0};
+	unsigned char command[2] = {B_TRIGGER_ENABLED, 0};
 	r = dso_write_bulk(command, sizeof(command));
 	END_CHECK;
 
-    dso_unlock();
+	dso_unlock();
 	FAIL_HANDLER(r);
 }
 
 int dso_get_channel_data(void *buffer, int buffer_size)
 {
 	int r;
-    dso_lock();
+	dso_lock();
 
-    CHECK((r = dso_begin_command()) >= 0);
+	CHECK((r = dso_begin_command()) >= 0);
 
-    unsigned char command[2] = {B_CAPTURE_GET_DATA, 0};
-    CHECK((r = dso_write_bulk(command, sizeof(command))) >= 0);
+	unsigned char command[2] = {B_CAPTURE_GET_DATA, 0};
+	CHECK((r = dso_write_bulk(command, sizeof(command))) >= 0);
 
-    int nr_packets = 2 * buffer_size / input_mtu;
+	int nr_packets = 2 * buffer_size / input_mtu;
 
-    for(int i = 0; i < nr_packets; i++)
-        if((r = dso_read_bulk(buffer + i*input_mtu, input_mtu)) < 0)
+	for(int i = 0; i < nr_packets; i++)
+		if((r = dso_read_bulk(buffer + i*input_mtu, input_mtu)) < 0)
 			break;
 
 	END_CHECK_2;
 
-    dso_unlock();
+	dso_unlock();
 	FAIL_HANDLER(r);
 }
 
 int dso_get_capture_state(int *tp)
 {
 	int r;
-    unsigned char temp[input_mtu];
+	unsigned char temp[input_mtu];
 
 	dso_lock();
 
-    CHECK((r = dso_begin_command()) != 0);
+	CHECK((r = dso_begin_command()) != 0);
 
-    unsigned char c[2] = {B_CAPTURE_GET_STATE, 0};
-    CHECK((r = dso_write_bulk(c, sizeof(c))) >= 0);
+	unsigned char c[2] = {B_CAPTURE_GET_STATE, 0};
+	CHECK((r = dso_write_bulk(c, sizeof(c))) >= 0);
 
-    r = dso_read_bulk(temp, input_mtu);
+	r = dso_read_bulk(temp, input_mtu);
 
 	END_CHECK_2;
 	dso_unlock();
 
 	*tp = (temp[1] << 16) | (temp[3] << 8) | temp[2];
-    return temp[0];
+	return temp[0];
 }
 
 int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_ch1, int coupling_ch2, int trigger)
@@ -406,7 +405,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 		{{ 0x04, 0x08 }, { 0x20, 0x40 }},	// 1V
 	};
 
-    u8 c[8];
+	u8 c[8];
 	c[0] = 0x00;
 	c[1] = relays[step_ch1][0][0];
 	c[2] = relays[step_ch1][0][1];
@@ -416,7 +415,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	c[6] = coupling_ch1 == COUPLING_AC ? 0x10 : 0xef;
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
 
-    r = dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0);
+	r = dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0);
 	dso_unlock();
 	END_CHECK_2;
 
@@ -425,8 +424,8 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 
 int dso_get_offsets(struct offset_ranges *or)
 {
-    dso_lock();
-    int r = dso_read_control(C_COMMAND, or, sizeof(*or), 0x08, 0);
+	dso_lock();
+	int r = dso_read_control(C_COMMAND, or, sizeof(*or), 0x08, 0);
 	dso_unlock();
 
 	FAIL_HANDLER(r);
@@ -434,14 +433,14 @@ int dso_get_offsets(struct offset_ranges *or)
 
 int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset)
 {
-    unsigned char offset[6] = {0,0,0,0,0,0};
+	unsigned char offset[6] = {0,0,0,0,0,0};
 
-    offset[1] = ch1Offset >> 8;
-    offset[3] = ch2Offset >> 8;
-    offset[5] = extOffset;
+	offset[1] = ch1Offset >> 8;
+	offset[3] = ch2Offset >> 8;
+	offset[5] = extOffset;
 
-    dso_lock();
-    int r = dso_write_control(C_SETOFFSET, offset, sizeof(offset), 0, 0);
+	dso_lock();
+	int r = dso_write_control(C_SETOFFSET, offset, sizeof(offset), 0, 0);
 	dso_unlock();
 
 	FAIL_HANDLER(r);

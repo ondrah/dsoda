@@ -1,6 +1,6 @@
+include config.mk
 CFLAGS=-g -Wall -DG_DISABLE_DEPRECATED -DGDK_DISABLE_DEPRECATED -DGDK_PIXBUF_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED `pkg-config gtk+-2.0 --cflags` -std=c99 `pkg-config gtkglext-1.0 --cflags`
-LDFLAGS=`pkg-config gtk+-2.0 --libs` `pkg-config gtkglext-1.0 --libs`
-#-s
+LDFLAGS=`pkg-config gtk+-2.0 --libs` `pkg-config gtkglext-1.0 --libs` -s
 
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
@@ -21,22 +21,26 @@ clean:
 
 .PHONY: mrproper
 mrproper: clean
-	rm -f config.status confige.log config.h tags .dep
+	rm -f config.status config.log config.h tags .dep
 	rm -fr autom4te.cache
 
 .PHONY: install
 install:
+	mkdir -p $(PREFIX)/bin
 	install dsoda $(PREFIX)/bin
 	install misc/dsodafw $(PREFIX)/bin
-	mkdir -p $(PREFIX)/share/dsoda
-	install misc/extractor.pl $(PREFIX)/share/dsoda
-	install misc/dsoda_icon.png $(PREFIX)/share/dsoda
-	install LICENSE $(PREFIX)/share/dsoda
-	mkdir -p $(FIRMWARE_DIR)
-	install misc/dso2250_loader.hex $(FIRMWARE_DIR)
-	install misc/dso2250_firmware.hex $(FIRMWARE_DIR)
-	mkdir -p $(PREFIX)/share/man
-	install misc/dsoda.1 $(PREFIX)/share/man
-	ln -s dsoda.1 $(PREFIX)/share/man/dsodafw.1
+	mkdir -p $(PREFIX)/usr/share/dsoda
+	install misc/extractor.pl $(PREFIX)/usr/share/dsoda
+	install -m 644 misc/dsoda_icon.png $(PREFIX)/usr/share/dsoda
+	install -m 644 LICENSE $(PREFIX)/usr/share/dsoda
+	install -m 644 README $(PREFIX)/usr/share/dsoda
+	mkdir -p $(PREFIX)/usr/share/man/man1
+	install -m 644 misc/dsoda.1 $(PREFIX)/usr/share/man/man1
+	ln -s dsoda.1 $(PREFIX)/usr/share/man/man1/dsodafw.1
+	mkdir -p $(PREFIX)/lib/firmware
+	install -m 644 misc/dso2250_loader.hex $(PREFIX)/lib/firmware
+	install -m 644 misc/dso2250_firmware.hex $(PREFIX)/lib/firmware
+	mkdir -p $(PREFIX)/etc/udev/rules.d
+	install -m 644 misc/dso2250.rules $(PREFIX)/etc/udev/rules.d/20-dso2250.rules
 	
 -include .dep

@@ -7,10 +7,10 @@ or
 .B dsodafw
 .SH Description
 .LP
-The DSO-2250 is an EZ-USB device which needs its firmware loaded before it's
-been used. Depending on installation type of dsoda, the firmware can be loaded
-either automatically via udev by fxload command just after plug-in or manually
-with dsodafw command which is a simple fxload + dsoda shell wrapper.
+The DSO-2250 is an EZ-USB device which needs to load its firmware before it's
+being used. Depending on installation type of dsoda, the firmware can be loaded
+either automatically via udev by fxload utility just after plug-in or manually
+with dsodafw script which is a simple fxload + dsoda shell wrapper.
 
 .SH Mouse Bindings
 
@@ -26,6 +26,15 @@ pan
 .B ctrl + scroll
 change the x/y ratio
 
+.B left-click
+assign first position of current trigger
+
+.B right-click
+assign second position of current trigger
+
+As of this version, the cursor information is written to parent console window
+(stdout).
+
 .SH Key Bindings
 .B c
 change cursor source
@@ -38,6 +47,8 @@ switch interpolation mode (lines/points)
 
 .B escape
 center the graph, reset zoom, and clear the cursors
+
+Note that the graph window must have focus.
 
 .SH See also
 udev, fxload

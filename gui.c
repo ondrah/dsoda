@@ -31,7 +31,7 @@
 #define APPNAME0	"Digital"
 #define APPNAME1	"Soda"
 #define APPNAME		APPNAME0 " " APPNAME1
-#define ICON_FILE	DSODA_RESOURCE_DIR "dsoda-icon.png"
+#define ICON_FILE	DSODA_RESOURCE_DIR "dsoda_icon.png"
 #define DSODA_URL	"http://dsoda.sf.net"
 #define VERSION		"1.0"
 
@@ -47,7 +47,7 @@ static int trigger_position;
 static int selected_channels = SELECT_CH1CH2;
 static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
-float offset_ch[3] = { 0.66, 0.33, 0.5 }, offset_t = 0.66, position_t = 0.5;
+float offset_ch[3] = { 0.66, 0.33, 0.5 }, offset_t = 0.66, position_t = 0.45;
 static struct offset_ranges offset_ranges;
 static int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
@@ -65,17 +65,6 @@ static int p[2];	// dso_thread => gui update mechanism pipe
 	dso_adjust_buffer(sz); \
 	gui_update_buffer_size(sz); \
 }
-
-enum
-{
-   SHOW_ACTUAL_X,
-   SHOW_ACTUAL_Y,
-   SHOW_MARKED_X,
-   SHOW_MARKED_Y,
-   SHOW_DELTA_X,
-   SHOW_DELTA_Y,
-   SHOW_NUM_ENTRIES
-};
 
 #define SCALAR(a)	(sizeof(a) / sizeof(a[0]))
 
@@ -336,7 +325,7 @@ static
 void update_time_per_window()
 {
 	dso_period_usec = COMPUTE_PERIOD_USEC;
-	DMSG("period = %d\n", dso_period_usec);
+	//DMSG("period = %d\n", dso_period_usec);
 
 	char buf[64];
 	float r = dso_period_usec;
