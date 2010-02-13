@@ -235,7 +235,7 @@ int dso_set_filter(int hf_reject)
 	FAIL_HANDLER(r);
 }
 
-int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSource, int trigger_slope, int trigger_position, int buffer_size)
+int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger_source, int trigger_slope, int trigger_position, int buffer_size)
 {
 	const u8 sampling_speed[][3] = {
 	{ 0xa0, 0x00, 0x00 },	// 125MS/s
@@ -262,7 +262,7 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
    	CHECK((r = dso_begin_command()) >= 0);
 
 	int sc, ts, bs;
-	switch(selectedChannel) {
+	switch(selected_channels) {
 		case SELECT_CH1:
 			sc = 0x4;
 			break;
@@ -275,12 +275,26 @@ int dso_set_trigger_sample_rate(int my_speed, int selectedChannel, int triggerSo
 	}
 
 	ts = trigger_slope == SLOPE_PLUS ? 0x0 : 0x8;
-	bs = buffer_size == 10240 ? 0x06 : 0x0A;		// short buffer 0x02
+	bs = buffer_size == 10240 ? 0x0 : 0x8;	// FIXME: srolling mode, short buffer
+	u8 tsrc;
+	switch(trigger_source) {
+		case TRIGGER_CH1:
+		case TRIGGER_ALT:
+			tsrc = 0x6;
+			break;
+		case TRIGGER_CH2:
+			tsrc = 0x7;
+			break;
+		case TRIGGER_EXT:
+		case TRIGGER_EXT10:
+			tsrc = 0x4;
+			break;
+	}
 
 	u8 c[11];
 	c[0] = B_CONFIGURE;
 	c[1] = 0x00;
-	c[2] = sampling_speed[my_speed][0] | bs;
+	c[2] = sampling_speed[my_speed][0] | bs | tsrc;
 	c[3] = sc | ts;
 	c[4] = sampling_speed[my_speed][1];
 	c[5] = sampling_speed[my_speed][2];
@@ -412,7 +426,7 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	c[3] = coupling_ch1 == COUPLING_AC ? 0x02 : 0xfd;
 	c[4] = relays[step_ch2][1][0];
 	c[5] = relays[step_ch2][1][1];
-	c[6] = coupling_ch1 == COUPLING_AC ? 0x10 : 0xef;
+	c[6] = coupling_ch2 == COUPLING_AC ? 0x10 : 0xef;
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
 
 	r = dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0);
@@ -431,13 +445,13 @@ int dso_get_offsets(struct offset_ranges *or)
 	FAIL_HANDLER(r);
 }
 
-int dso_set_offset(int ch1Offset, int ch2Offset, int extOffset)
+int dso_set_offsets(int offset_ch1, int offset_ch2, int offset_t)
 {
-	unsigned char offset[6] = {0,0,0,0,0,0};
+	unsigned char offset[7] = {0,0,0,0,0,0,0x12};
 
-	offset[1] = ch1Offset >> 8;
-	offset[3] = ch2Offset >> 8;
-	offset[5] = extOffset;
+	offset[1] = offset_ch1 >> 8;
+	offset[3] = offset_ch2 >> 8;
+	offset[5] = offset_t;
 
 	dso_lock();
 	int r = dso_write_control(C_SETOFFSET, offset, sizeof(offset), 0, 0);

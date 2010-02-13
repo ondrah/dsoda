@@ -153,7 +153,7 @@ update_offset()
 	if(!dso_initialized)
 		return;
 
-	dso_set_offset(ro_ch1, ro_ch2, ro_t);
+	dso_set_offsets(ro_ch1, ro_ch2, ro_t);
 }
 
 static void
@@ -172,10 +172,11 @@ void coupling_cb(GtkWidget *w, int ch)
 
 	int nval = gtk_combo_box_get_active(GTK_COMBO_BOX(w));
 	if(nval == 2) {
-		capture_ch[ch] = nval;	// FIXME: redraw.. ?
+		capture_ch[ch] = 0;	// FIXME: redraw.. ?
 		return;
 	}
 
+	capture_ch[ch] = 1;
 	coupling_ch[ch] = nval;
 
 	if(!dso_initialized)
@@ -226,6 +227,7 @@ void trigger_source_cb(GtkWidget *v, int ch)
 
 	if(fl_running) {
 		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+		dso_set_voltage_and_coupling(voltage_ch[0], voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
 	}
 }
 
@@ -886,7 +888,6 @@ main(gint argc, char *argv[])
 
 	if(!fl_noinit && dso_initialized) {
 		dso_get_offsets(&offset_ranges);
-		/*
 		for(int i=0; i<2; i++) {
 			DMSG("Channel %d\n", i);
 			for(int j=0; j<9; j++) {
@@ -895,7 +896,6 @@ main(gint argc, char *argv[])
 			DMSG("\n");
 		}
 		DMSG("trigger: 0x%x - 0x%x\n", offset_ranges.trigger[0], offset_ranges.trigger[1]);
-		*/
 		dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
 	}
 
