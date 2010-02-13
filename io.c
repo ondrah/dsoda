@@ -275,19 +275,19 @@ int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger
 	}
 
 	ts = trigger_slope == SLOPE_PLUS ? 0x0 : 0x8;
-	bs = buffer_size == 10240 ? 0x0 : 0x8;	// FIXME: srolling mode, short buffer
+	bs = buffer_size == 10240 ? 0x4 : 0x8;	// FIXME: srolling mode, short buffer
 	u8 tsrc;
 	switch(trigger_source) {
 		case TRIGGER_CH1:
 		case TRIGGER_ALT:
-			tsrc = 0x6;
+			tsrc = 0x2;
 			break;
 		case TRIGGER_CH2:
-			tsrc = 0x7;
+			tsrc = 0x3;
 			break;
 		case TRIGGER_EXT:
 		case TRIGGER_EXT10:
-			tsrc = 0x4;
+			tsrc = 0x0;
 			break;
 	}
 
