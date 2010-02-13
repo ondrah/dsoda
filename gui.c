@@ -888,14 +888,16 @@ main(gint argc, char *argv[])
 
 	if(!fl_noinit && dso_initialized) {
 		dso_get_offsets(&offset_ranges);
+
 		for(int i=0; i<2; i++) {
-			DMSG("Channel %d\n", i);
+			DMSG("Channel %d\n", i + 1);
 			for(int j=0; j<9; j++) {
-				DMSG("%x - %x\n", offset_ranges.channel[i][j][0], offset_ranges.channel[i][j][1]);
+				DMSG("%.2fV: %x - %x\n", nr_voltages[j], offset_ranges.channel[i][j][0], offset_ranges.channel[i][j][1]);
 			}
 			DMSG("\n");
 		}
 		DMSG("trigger: 0x%x - 0x%x\n", offset_ranges.trigger[0], offset_ranges.trigger[1]);
+
 		dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
 	}
 

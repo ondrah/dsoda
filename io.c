@@ -291,7 +291,7 @@ int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger
 			break;
 	}
 
-	u8 c[11];
+	u8 c[16];
 	c[0] = B_CONFIGURE;
 	c[1] = 0x00;
 	c[2] = sampling_speed[my_speed][0] | bs | tsrc;
@@ -302,6 +302,11 @@ int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger
 	c[7] = (u8)(trigger_position >> 8);
 	c[8] = c[9] = 0;
 	c[10] = 0x7;	// trigger position adjustment
+	c[11] = 0;
+	c[12] = 0;		// ?
+	c[13] = 0;		// ?
+	c[14] = 0x7;	// ch1 position adjustment (?)
+	c[15] = 0;
 
 	r = dso_write_bulk(c, sizeof(c));
 	END_CHECK;
@@ -447,7 +452,7 @@ int dso_get_offsets(struct offset_ranges *or)
 
 int dso_set_offsets(int offset_ch1, int offset_ch2, int offset_t)
 {
-	unsigned char offset[7] = {0,0,0,0,0,0,0x12};
+	unsigned char offset[6] = {0,0,0,0,0,0};
 
 	offset[1] = offset_ch1 >> 8;
 	offset[3] = offset_ch2 >> 8;
