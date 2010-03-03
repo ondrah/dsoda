@@ -68,6 +68,12 @@ static int p[2];	// dso_thread => gui update mechanism pipe
 
 #define SCALAR(a)	(sizeof(a) / sizeof(a[0]))
 
+#define DSO_SET_VOLTAGE dso_set_voltage(voltage_ch, coupling_ch, trigger_source)
+#define DSO_SET_FILTER	dso_set_filter(reject_hf)
+#define DSO_CONFIGURE dso_configure(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx])
+
+#define MARK_RECONFIGURE	dso_thread_set_cb(&reconfigure_c)
+
 static const char *str_graph_types[] = { "X(t)", /*"X(Y)", *//*"FFT"*/ };
 int graph_type = 0;
 
@@ -89,6 +95,14 @@ static GtkWidget *display_area;
 static GtkWidget *box;
 static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
 
+static
+void reconfigure_c()
+{
+	DSO_CONFIGURE;
+	DSO_SET_FILTER;
+	DSO_SET_VOLTAGE;
+}
+
 unsigned int gui_get_sampling_rate()
 {
 	return nr_sampling_rates[sampling_rate_idx];
@@ -101,6 +115,30 @@ scale_configure(GtkScale *scale)
     gtk_scale_set_digits (scale, 0);
     //gtk_scale_configure_pos (scale, GTK_POS_TOP);
     gtk_scale_set_draw_value (scale, FALSE);
+}
+
+static int ro_ch[2], ro_t;	// real offsets
+
+static
+void set_offsets_c()
+{
+	dso_set_offsets(ro_ch, ro_t);
+}
+
+static void
+update_offset()
+{
+	for(int i = 0; i < 2; i++)
+		ro_ch[i] = (offset_ranges.channel[i][voltage_ch[i]][1] - offset_ranges.channel[i][voltage_ch[i]][0]) * offset_ch[i] + offset_ranges.channel[i][voltage_ch[i]][0];
+
+	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t + offset_ranges.trigger[0];
+
+	//FIXME repaint
+
+	if(!dso_initialized)
+		return;
+
+	dso_thread_set_cb(&set_offsets_c);
 }
 
 static
@@ -116,9 +154,13 @@ void start_pressed()
 
 		gtk_button_set_label(GTK_BUTTON(start_button), "Stop");
 
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-		dso_set_filter(reject_hf);
+		DSO_CONFIGURE;
+		DSO_SET_FILTER;
+		DSO_SET_VOLTAGE;
+		update_offset();
+
 		dso_thread_resume();
+
 	} else {
 		DMSG("stopping capture\n");
 		fl_running = 0;
@@ -138,22 +180,6 @@ void trigger_mode_cb(GtkWidget *w)
 
 	dso_trigger_mode = nval;
 	gtk_widget_set_sensitive(stop_button, !(dso_trigger_mode == TRIGGER_SINGLE));
-}
-
-static void
-update_offset()
-{
-	int ro_ch1, ro_ch2, ro_t;	// real offsets
-	ro_ch1 = (offset_ranges.channel[0][voltage_ch[0]][1] - offset_ranges.channel[0][voltage_ch[0]][0]) * offset_ch[0] + offset_ranges.channel[0][voltage_ch[0]][0];
-	ro_ch2 = (offset_ranges.channel[1][voltage_ch[1]][1] - offset_ranges.channel[1][voltage_ch[1]][0]) * offset_ch[1] + offset_ranges.channel[1][voltage_ch[1]][0];
-	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t + offset_ranges.trigger[0];
-
-	//FIXME repaint
-
-	if(!dso_initialized)
-		return;
-
-	dso_set_offsets(ro_ch1, ro_ch2, ro_t);
 }
 
 static void
@@ -182,7 +208,7 @@ void coupling_cb(GtkWidget *w, int ch)
 	if(!dso_initialized)
 		return;
 
-	dso_set_voltage_and_coupling(voltage_ch[0], voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
+	DSO_SET_VOLTAGE;
 }
 
 static
@@ -200,7 +226,9 @@ void voltage_changed_cb(GtkWidget *v, int ch)
 	if(!dso_initialized)
 		return;
 
-	dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
+	// required to avoid offset deviation (?)
+	//dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	DSO_SET_VOLTAGE;
 	update_offset();
 }
 
@@ -209,26 +237,22 @@ void trigger_slope_cb(GtkWidget *v, int ch)
 {
 	trigger_slope = gtk_combo_box_get_active(GTK_COMBO_BOX(v));
 
-	if(!dso_initialized)
+	if(!dso_initialized || !fl_running)
 		return;
 
-	if(fl_running) {
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-	}
+	MARK_RECONFIGURE;
 }
+
 
 static
 void trigger_source_cb(GtkWidget *v, int ch)
 {
 	trigger_source = gtk_combo_box_get_active(GTK_COMBO_BOX(v));
 
-	if(!dso_initialized)
+	if(!dso_initialized || !fl_running)
 		return;
 
-	if(fl_running) {
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-		dso_set_voltage_and_coupling(voltage_ch[0], voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
-	}
+	MARK_RECONFIGURE;
 }
 
 static
@@ -319,7 +343,6 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 
 	gtk_box_pack_start(GTK_BOX(vb), scale_ch, TRUE, FALSE, 0);
 
-
 	return frame;
 }
 
@@ -351,15 +374,11 @@ void buffer_size_cb()
 {
 	buffer_size_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_bsize));
 	SETUP_BUFFER(nr_buffer_sizes[buffer_size_idx]);
-	if(dso_initialized)
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
 	update_time_per_window();
-}
+	if(!dso_initialized)
+		return;
 
-static
-void set_trigger_cb()
-{
-	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	MARK_RECONFIGURE;
 }
 
 static
@@ -367,8 +386,10 @@ void sampling_rate_cb()
 {
 	sampling_rate_idx = gtk_combo_box_get_active(GTK_COMBO_BOX(set_srate));
 	update_time_per_window();
+	if(!dso_initialized)
+		return;
 
-	dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
+	MARK_RECONFIGURE;
 }
 
 static
@@ -465,7 +486,7 @@ void filter_hf_cb(GtkCheckMenuItem *cm)
 {
 	reject_hf = cm->active;
 	if(dso_initialized)
-		dso_set_filter(reject_hf);
+		DSO_SET_FILTER;
 }
 
 static
@@ -585,10 +606,8 @@ position_t_cb(GtkAdjustment *adj)
 	if(!dso_initialized)
 		return;
 
-	if(!fl_running)
-		dso_set_trigger_sample_rate(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx]);
-	else
-		dso_thread_set_cb(&set_trigger_cb);
+	if(fl_running)
+		MARK_RECONFIGURE;
 }
 
 static
@@ -898,7 +917,6 @@ main(gint argc, char *argv[])
 		}
 		DMSG("trigger: 0x%x - 0x%x\n", offset_ranges.trigger[0], offset_ranges.trigger[1]);
 
-		dso_set_voltage_and_coupling(voltage_ch[0],voltage_ch[1], coupling_ch[0], coupling_ch[1], trigger_source);
 	}
 
 	update_offset();

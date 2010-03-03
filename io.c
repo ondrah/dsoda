@@ -235,7 +235,7 @@ int dso_set_filter(int hf_reject)
 	FAIL_HANDLER(r);
 }
 
-int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger_source, int trigger_slope, int trigger_position, int buffer_size)
+int dso_configure(int my_speed, int selected_channels, int trigger_source, int trigger_slope, int trigger_position, int buffer_size)
 {
 	const u8 sampling_speed[][3] = {
 	{ 0xa0, 0x00, 0x00 },	// 125MS/s
@@ -303,8 +303,8 @@ int dso_set_trigger_sample_rate(int my_speed, int selected_channels, int trigger
 	c[8] = c[9] = 0;
 	c[10] = 0x7;	// trigger position adjustment
 	c[11] = 0;
-	c[12] = 0;		// ?
-	c[13] = 0;		// ?
+	c[12] = c[6];		// ?
+	c[13] = c[7];		// ?
 	c[14] = 0x7;	// ch1 position adjustment (?)
 	c[15] = 0;
 
@@ -401,7 +401,7 @@ int dso_get_capture_state(int *tp)
 	return temp[0];
 }
 
-int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_ch1, int coupling_ch2, int trigger)
+int dso_set_voltage(int *voltage_ch, int *coupling_ch, int trigger)
 {
 	dso_lock();
 
@@ -409,14 +409,12 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	CHECK((r = dso_begin_command()) >= 0)
 
     u8 c0[8] = {B_SET_VOLTAGE, 0x0f, 0, 0, 0, 0, 0, 0};
-	int m3_1 = voltage_ch1 % 3;
-	int m3_2 = voltage_ch2 % 3;
-	c0[2] = (((0xC >> m3_2) & 3) << 2) | ((0xC >> m3_1) & 3);
+	c0[2] = (((0xC >> (voltage_ch[1] % 3)) & 3) << 2) | ((0xC >> (voltage_ch[0] % 3)) & 3);
 
     CHECK((r = dso_write_bulk(c0, sizeof(c0))) >= 0)
 
-	int step_ch1 = voltage_ch1 / 3;
-	int step_ch2 = voltage_ch2 / 3;
+	int step_ch1 = voltage_ch[0] / 3;
+	int step_ch2 = voltage_ch[1] / 3;
 	
 	static const u8 relays[][2][2] = {
 		{{ 0xfb, 0xf7 }, { 0xdf, 0xbf }},	// 10mV
@@ -428,10 +426,10 @@ int dso_set_voltage_and_coupling(int voltage_ch1, int voltage_ch2, int coupling_
 	c[0] = 0x00;
 	c[1] = relays[step_ch1][0][0];
 	c[2] = relays[step_ch1][0][1];
-	c[3] = coupling_ch1 == COUPLING_AC ? 0x02 : 0xfd;
+	c[3] = coupling_ch[0] == COUPLING_AC ? 0x02 : 0xfd;
 	c[4] = relays[step_ch2][1][0];
 	c[5] = relays[step_ch2][1][1];
-	c[6] = coupling_ch2 == COUPLING_AC ? 0x10 : 0xef;
+	c[6] = coupling_ch[1] == COUPLING_AC ? 0x10 : 0xef;
 	c[7] = trigger == TRIGGER_EXT ? 0xfe : 0x01;
 
 	r = dso_write_control(C_SETRELAYS, c, sizeof(c), 0, 0);
@@ -450,12 +448,12 @@ int dso_get_offsets(struct offset_ranges *or)
 	FAIL_HANDLER(r);
 }
 
-int dso_set_offsets(int offset_ch1, int offset_ch2, int offset_t)
+int dso_set_offsets(int *offset_ch, int offset_t)
 {
 	unsigned char offset[6] = {0,0,0,0,0,0};
 
-	offset[1] = offset_ch1 >> 8;
-	offset[3] = offset_ch2 >> 8;
+	offset[1] = offset_ch[0] >> 8;
+	offset[3] = offset_ch[1] >> 8;
 	offset[5] = offset_t;
 
 	dso_lock();
