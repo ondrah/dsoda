@@ -41,12 +41,14 @@
 static GdkCursor *cursor_cross, *cursor_hand;
 static GdkGLConfig *glconfig;
 static int gl_channels, gl_grid, gl_cursor, gl_trigger;
-static int fl_pan = 0, fl_pan_ready = 0, fl_xfactor = 0;
+static int fl_pan = 0, fl_pan_ready = 0, fl_xfactor = 0, fl_osd = 1;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
 static int x_factor = 1;
 static GtkWidget *my_window;
 static int cursor_set[2] = {0,0};
+static char *c_msg[2] = {0,0}, *d_msg = 0;
+static int c_msg_len[2] = {0,0}, d_msg_len = 0;
 static int fl_grid = 1;
 
 static int samples_in_grid = 10000;
@@ -65,6 +67,9 @@ static int cursor_source = 0;	// channel source (target)
 
 GLushort channel_rgba[3][4] = {{0,0xffff,0,0x8000}, {0xffff,0xffff,0,0x8000},{0xffff,0,0,0x8000}};
 
+static gchar font_name[] = "courier 10";
+static GLuint font_list_base;
+static gfloat font_height;
 
 void display_refresh(GtkWidget *da);
 
@@ -93,7 +98,7 @@ static
 void gl_done()
 {
 	glDeleteLists(gl_channels, 3);
-	glDeleteLists(gl_cursor, 3);
+	glDeleteLists(gl_cursor, 2);
 	glDeleteLists(gl_trigger, 1);
 	glDeleteLists(gl_grid, 1);
 }
@@ -255,6 +260,7 @@ void update_screen()
 		glCallList(gl_cursor);
 	if(cursor_set[1])
 		glCallList(gl_cursor + 1);
+
 	glPopMatrix();
 }
 
@@ -325,6 +331,29 @@ gboolean configure_event(GtkWidget *widget, GdkEventConfigure *event, gpointer d
 
 	gl_resize(widget->allocation.width, widget->allocation.height);
 
+  PangoFontDescription *font_desc;
+  PangoFont *font;
+  PangoFontMetrics *font_metrics;
+
+  font_list_base = glGenLists (128);
+
+  font_desc = pango_font_description_from_string (font_name);
+
+  font = gdk_gl_font_use_pango_font (font_desc, 0, 128, font_list_base);
+  if (font == NULL) {
+      g_print ("*** Can't load font '%s'\n", font_name);
+  }
+
+	font_metrics = pango_font_get_metrics (font, NULL);
+  font_height = pango_font_metrics_get_ascent (font_metrics) +
+                pango_font_metrics_get_descent (font_metrics);
+  font_height = PANGO_PIXELS (font_height) / 48.0;
+  g_print("%f\n", font_height);
+
+  pango_font_description_free (font_desc);
+  pango_font_metrics_unref (font_metrics);
+
+
 	gdk_gl_drawable_gl_end (gldrawable);
 
 	return TRUE;
@@ -370,34 +399,33 @@ void display_refresh(GtkWidget *da)
 
 int display_init(int *pargc, char ***pargv)
 {
-  gint major, minor;
+	gint major, minor;
 
-  gtk_gl_init(pargc, pargv);
-  gdk_gl_query_version(&major, &minor);
-  g_print("OpenGL extension %d.%d\n", major, minor);
+	gtk_gl_init(pargc, pargv);
+	gdk_gl_query_version(&major, &minor);
+	g_print("OpenGL extension %d.%d\n", major, minor);
 
-  /* Try double-buffered visual */
-  glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB    |
-                                        GDK_GL_MODE_DEPTH  |
-                                        GDK_GL_MODE_DOUBLE);
-  if (glconfig == NULL) {
-      g_print("*** Cannot find the double-buffered visual.\n");
-      g_print("*** Trying single-buffered visual.\n");
+	/* Try double-buffered visual */
+	glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB		|
+																				GDK_GL_MODE_DEPTH	|
+																				GDK_GL_MODE_DOUBLE);
+	if (glconfig == NULL) {
+		g_print("*** Cannot find the double-buffered visual.\n");
+		g_print("*** Trying single-buffered visual.\n");
 
-      /* Try single-buffered visual */
-      glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB   |
-                                            GDK_GL_MODE_DEPTH);
-      if (glconfig == NULL) {
-          g_print("*** No appropriate OpenGL-capable visual found.\n");
-          //exit (1);
-		  return -1;
-        }
-    }
+		/* Try single-buffered visual */
+		glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGB | GDK_GL_MODE_DEPTH);
+		if(glconfig == NULL) {
+			g_print("*** No appropriate OpenGL-capable visual found.\n");
+			//exit (1);
+			return -1;
+		}
+	}
 
-  /* Get automatically redrawn if any of their children changed allocation. */
+	/* Get automatically redrawn if any of their children changed allocation. */
  // gtk_container_set_reallocate_redraws (GTK_CONTAINER (window), TRUE);
 
-  return 0;
+	return 0;
 }
 
 static
@@ -405,6 +433,28 @@ void convert_coords(float *dx, float *dy, GtkWidget *w, float cx, float cy)
 {
 	*dx = DIVS_H * cx / w->allocation.width - DIVS_H / 2;
 	*dy = -(DIVS_V * cy / w->allocation.height - DIVS_V / 2);
+}
+
+static
+void cursor_genreport()
+{
+	float time_base = (float)samples_in_grid / DIVS_H * (1000000.0 / gui_get_sampling_rate());
+	float v = nr_voltages[voltage_ch[cursor_source]];
+	float o = (offset_ch[cursor_source] - 0.5) * DIVS_V;
+	float dx = (cursor[1].x - cursor[0].x) * time_base * zoom_factor / x_factor;
+	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
+	char *str_vu = "V";
+	char *str_hu = "usec";
+	
+	if(cursor_set[0])
+		c_msg_len[0] = asprintf(&c_msg[0], "c0:  x = %.2f %s y = %.2f %s", cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu);
+
+	if(cursor_set[1])
+		c_msg_len[1] = asprintf(&c_msg[1], "c1:  x = %.2f %s y = %.2f %s", cursor[1].x * zoom_factor / x_factor * time_base, str_hu, (cursor[1].y * zoom_factor - o) * v, str_vu);
+
+	if(cursor_set[0] && cursor_set[1])
+		d_msg_len = asprintf(&d_msg, "d:   x = %.2f %s y = %.2f %s", dx, str_hu, dy, str_vu);
+
 }
 
 static
@@ -430,6 +480,21 @@ void cursor_draw(int i)
 	glEnd();
 	if(i == 1)
 		glDisable(GL_LINE_STIPPLE);
+
+	if(fl_osd) {
+		glListBase(font_list_base);
+		cursor_genreport();
+
+		for(int i = 0; i < 2; i++) {
+			glRasterPos2f(-DIVS_H/2, DIVS_V/2 - 0.2 - i * font_height);
+			glCallLists(c_msg_len[i], GL_UNSIGNED_BYTE, c_msg[i]);
+		}
+
+		if(cursor_set[0] && cursor_set[1]) {
+			glRasterPos2f(-DIVS_H/2, DIVS_V/2 - 0.2 - 2 * font_height);
+			glCallLists(d_msg_len, GL_UNSIGNED_BYTE, d_msg);
+		}
+	}
 
 	glEndList();
 }
@@ -475,22 +540,14 @@ gboolean mouse_motion_cb(GtkWidget *w, GdkEventMotion *e, gpointer p)
 static
 void cursor_info()
 {
-	float time_base = (float)samples_in_grid / DIVS_H * (1000000.0 / gui_get_sampling_rate());
-	float v = nr_voltages[voltage_ch[cursor_source]];
-	float o = (offset_ch[cursor_source] - 0.5) * DIVS_V;
-	float dx = (cursor[1].x - cursor[0].x) * time_base * zoom_factor / x_factor;
-	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
-	char *str_vu = "V";
-	char *str_hu = "usec";
-	
 	if(cursor_set[0])
-		g_print("c0:  x = %f %s y = %f %s\n", cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu);
+		g_print("%s\n", c_msg[0]);
 
 	if(cursor_set[1])
-		g_print("c1:  x = %f %s y = %f %s\n", cursor[1].x * zoom_factor / x_factor * time_base, str_hu, (cursor[1].y * zoom_factor - o) * v, str_vu);
+		g_print("%s\n", c_msg[0]);
 
 	if(cursor_set[0] && cursor_set[1])
-		g_print("d:   x = %f %s y = %f %s\n", dx, str_hu, dy, str_vu);
+		g_print("%s\n", d_msg);
 }
 
 static
@@ -585,6 +642,10 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			break;
 		case GDK_i:
 			interpolation_type ^= 1;
+			display_refresh(my_window);
+			break;
+		case GDK_o:
+			fl_osd ^= 1;
 			display_refresh(my_window);
 			break;
 		case GDK_Shift_L:
