@@ -11,6 +11,9 @@ Digital Soda is a simple frontend for the DSO-2250 USB oscilloscope.
 Building dsoda
 --------------
 
+You will need standard development packages plus libgtk2.0-dev,
+libgtkglext1-dev, and libusb-dev. The project should compile with
+
 ./configure && make && make install
 
 
