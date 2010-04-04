@@ -35,6 +35,8 @@
 #define DSODA_URL	"http://dsoda.sf.net"
 #define VERSION		"1.0"
 
+#define REDRAW_SCREEN	{if(display_area) display_refresh(display_area);}
+
 static int fl_running = 0;
 float nr_voltages[] = {0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5};
 
@@ -91,7 +93,7 @@ static int buffer_size_idx = 0, sampling_rate_idx = 5;
 volatile unsigned int dso_period_usec;
 volatile int dso_trigger_mode = TRIGGER_AUTO;
 
-static GtkWidget *display_area;
+static GtkWidget *display_area = 0;
 static GtkWidget *box;
 static GtkWidget *time_per_window, *set_srate, *set_bsize, *stop_button;
 
@@ -133,7 +135,7 @@ update_offset()
 
 	ro_t = (offset_ranges.trigger[1] - offset_ranges.trigger[0]) * offset_t + offset_ranges.trigger[0];
 
-	//FIXME repaint
+	REDRAW_SCREEN;
 
 	if(!dso_initialized)
 		return;
@@ -602,6 +604,8 @@ position_t_cb(GtkAdjustment *adj)
 	position_t = nval;
 	trigger_position = COMPUTE_TRIGGER_POSITION(nval);
 	//DMSG("trigger position adjusted, 0x%x (%f)\n", trigger_position, nval);
+
+	REDRAW_SCREEN;
 
 	if(!dso_initialized)
 		return;

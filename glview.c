@@ -8,6 +8,8 @@
 
 */
 
+#define _GNU_SOURCE
+#include <stdio.h>
 #include <gtk/gtk.h>
 #include <gtk/gtkgl.h>
 #include <math.h>
@@ -50,6 +52,9 @@ static int cursor_set[2] = {0,0};
 static char *c_msg[2] = {0,0}, *d_msg = 0;
 static int c_msg_len[2] = {0,0}, d_msg_len = 0;
 static int fl_grid = 1;
+
+static int fl_highcontrast = 0;
+static int line_width = 1;
 
 static int samples_in_grid = 10000;
 static float overlap = 0.5;
@@ -138,7 +143,7 @@ void update_screen()
 {
     glPushMatrix();
     glLoadIdentity();
-    glLineWidth(2);
+    glLineWidth(line_width);
 
 	while((int)trigger_point > (int)current_buffer_size)
 		trigger_point -= current_buffer_size;
@@ -162,7 +167,7 @@ void update_screen()
 		glEndList();
 	}
 
-	glLineWidth(1);
+	//glLineWidth(1);
 
 	if(fl_math) {
 		glNewList(gl_channels + 2, GL_COMPILE);
@@ -638,6 +643,18 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 			g_print("Switching cursor to %d, (%fV)\n", cursor_source + 1, nr_voltages[voltage_ch[cursor_source]]);
 			cursor_draw(0);
 			cursor_draw(1);
+			display_refresh(my_window);
+			break;
+		case GDK_h:	// high/low contrast
+			fl_highcontrast ^= 1;
+			if(fl_highcontrast)
+				glClearColor(1,1,1,0);
+			else
+				glClearColor(0,0,0,0);
+			display_refresh(my_window);
+			break;
+		case GDK_l:	// line width
+			line_width = (line_width % 5) + 1;
 			display_refresh(my_window);
 			break;
 		case GDK_i:
