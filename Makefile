@@ -1,6 +1,6 @@
 include config.mk
-CFLAGS=-g -Wall -DG_DISABLE_DEPRECATED -DGDK_DISABLE_DEPRECATED -DGDK_PIXBUF_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED `pkg-config gtk+-2.0 --cflags` -std=c99 `pkg-config gtkglext-1.0 --cflags`
-LDFLAGS=`pkg-config gtk+-2.0 --libs` `pkg-config gtkglext-1.0 --libs` -s
+CFLAGS=-g -Wall -DG_DISABLE_DEPRECATED -DGDK_DISABLE_DEPRECATED -DGDK_PIXBUF_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED `pkg-config gtk+-2.0 --cflags` -std=c99 `pkg-config gtkglext-1.0 --cflags` -ggdb
+LDFLAGS=`pkg-config gtk+-2.0 --libs` `pkg-config gtkglext-1.0 --libs`
 
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
@@ -42,5 +42,9 @@ install:
 	install -m 644 misc/dso2250_firmware.hex $(PREFIX)/lib/firmware
 	mkdir -p $(PREFIX)/etc/udev/rules.d
 	install -m 644 misc/dso2250.rules $(PREFIX)/etc/udev/rules.d/20-dso2250.rules
+	mkdir -p $(PREFIX)/usr/share/pixmaps
+	install -m 644 misc/dsoda_icon.png $(PREFIX)/usr/share/pixmaps
+	mkdir -p $(PREFIX)/usr/share/applications
+	install -m 644 misc/dsoda.desktop $(PREFIX)/usr/share/applications
 	
 -include .dep

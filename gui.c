@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <stdarg.h>
+#include <glib/gprintf.h>
 
 #include <stdio.h>
 #include <math.h>
@@ -33,7 +35,7 @@
 #define APPNAME		APPNAME0 " " APPNAME1
 #define ICON_FILE	DSODA_RESOURCE_DIR "dsoda_icon.png"
 #define DSODA_URL	"http://dsoda.sf.net"
-#define VERSION		"1.0"
+#define VERSION		"1.1"
 
 #define REDRAW_SCREEN	{if(display_area) display_refresh(display_area);}
 
@@ -51,12 +53,14 @@ static int reject_hf = 0;		//< reject high frequencies
 static int coupling_ch[2] = { COUPLING_AC, COUPLING_AC };
 float offset_ch[3] = { 0.66, 0.33, 0.5 }, offset_t = 0.66, position_t = 0.45;
 static struct offset_ranges offset_ranges;
-static int attenuation_ch[2] = { 1, 1};
+int attenuation_ch[2] = { 1, 1};
 int capture_ch[2] = { 1, 1 };
 int fl_math = 0;
 char math_source[2] = {0, 1};
 char math_op = M_ADD;
-static GtkWidget *math_window, *math_checkbox;
+static GtkWidget *math_window, *math_checkbox, *log_window;
+static GtkTextBuffer *log_buffer;
+static GtkObject *adj_trg_x, *adj_trg_y;
 
 unsigned int trigger_point = 0;
 GtkWidget *start_button;
@@ -75,6 +79,7 @@ static int p[2];	// dso_thread => gui update mechanism pipe
 #define DSO_CONFIGURE dso_configure(sampling_rate_idx, selected_channels, trigger_source, trigger_slope, trigger_position, nr_buffer_sizes[buffer_size_idx])
 
 #define MARK_RECONFIGURE	dso_thread_set_cb(&reconfigure_c)
+#define MARK_RECONFIGURE_ALL	dso_thread_set_cb(&reconfigure_all_c)
 
 static const char *str_graph_types[] = { "X(t)", /*"X(Y)", *//*"FFT"*/ };
 int graph_type = 0;
@@ -105,6 +110,21 @@ void reconfigure_c()
 	DSO_SET_VOLTAGE;
 }
 
+static int ro_ch[2], ro_t;	// real offsets
+
+static
+void set_offsets_c()
+{
+	dso_set_offsets(ro_ch, ro_t);
+}
+
+static
+void reconfigure_all_c()
+{
+	reconfigure_c();
+	set_offsets_c();
+}
+
 unsigned int gui_get_sampling_rate()
 {
 	return nr_sampling_rates[sampling_rate_idx];
@@ -117,14 +137,6 @@ scale_configure(GtkScale *scale)
     gtk_scale_set_digits (scale, 0);
     //gtk_scale_configure_pos (scale, GTK_POS_TOP);
     gtk_scale_set_draw_value (scale, FALSE);
-}
-
-static int ro_ch[2], ro_t;	// real offsets
-
-static
-void set_offsets_c()
-{
-	dso_set_offsets(ro_ch, ro_t);
 }
 
 static void
@@ -146,8 +158,10 @@ update_offset()
 static
 void start_pressed()
 {
-	if(!dso_initialized)
+	if(!dso_initialized) {
+		message("DSO not initialized, connect your DSO and restart dsoda.\n");
 		return;
+	}
 
 	fl_running ^= 1;
 
@@ -463,7 +477,7 @@ gint update_gui_cb()
 	pthread_mutex_unlock(&buffer_mutex);
 
 	trigger_point = find_trigger(trigger_point);
-	display_refresh(display_area);
+	display_refresh_fl(display_area);
 
 	if(dso_trigger_mode == TRIGGER_SINGLE) {
 		gtk_button_set_label(GTK_BUTTON(start_button), "Start");
@@ -539,7 +553,7 @@ void save_file_cb()
 			str_sampling_rates[sampling_rate_idx]
 			);
 	for(int i = 0; i < my_buffer_size; i++) {
-		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch[0] * 0xff) * nr_voltages[voltage_ch[0]] / 32.0, (my_buffer[2*i] - offset_ch[1] * 0xff) * nr_voltages[voltage_ch[1]] / 32.0);
+		fprintf(f, "%8d %f %f\n", i, (my_buffer[2*i + 1] - offset_ch[0] * 0xff) * nr_voltages[voltage_ch[0]] * attenuation_ch[0] / 32.0, (my_buffer[2*i] - offset_ch[1] * 0xff) * nr_voltages[voltage_ch[1]] * attenuation_ch[1] / 32.0);
 	}
 	fclose(f);
 }
@@ -612,6 +626,20 @@ position_t_cb(GtkAdjustment *adj)
 
 	if(fl_running)
 		MARK_RECONFIGURE;
+}
+
+void gui_set_trigger_position(float x, float y)
+{
+	x += 0.5;
+	y += 0.5;
+	
+	if(fl_running)
+		MARK_RECONFIGURE_ALL;
+
+	gtk_adjustment_set_value(GTK_ADJUSTMENT(adj_trg_x), x);
+	gtk_adjustment_set_value(GTK_ADJUSTMENT(adj_trg_y), y);
+//	offset_t_cb();
+//	position_t_cb();
 }
 
 static
@@ -750,24 +778,42 @@ create_control_window(int x, int y)
 	g_signal_connect(G_OBJECT(c_trigger_mode), "changed", G_CALLBACK(trigger_mode_cb), 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox), c_trigger_mode, FALSE, FALSE, 0);
 
+	// trigger Y
+	//GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 1.0, 0, 0, 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox2), gtk_label_new("Y"), FALSE, FALSE, 0);
-	// offset
-	GtkObject *lev_t = gtk_adjustment_new(offset_t, 0.0, 1.0, 0, 0, 0);
-    GtkWidget *scale_t = gtk_hscale_new(GTK_ADJUSTMENT(lev_t));
-    scale_configure(GTK_SCALE(scale_t));
-	g_signal_connect(G_OBJECT(lev_t), "value_changed", G_CALLBACK(offset_t_cb), 0);
-	gtk_box_pack_start(GTK_BOX(trigger_hbox2), scale_t, TRUE, TRUE, 0);
+	adj_trg_y = gtk_adjustment_new(offset_t, 0.0, 1.0, 0, 0, 0);
+    GtkWidget *trg_y = gtk_hscale_new(GTK_ADJUSTMENT(adj_trg_y));
+    scale_configure(GTK_SCALE(trg_y));
+	g_signal_connect(G_OBJECT(adj_trg_y), "value_changed", G_CALLBACK(offset_t_cb), 0);
+	gtk_box_pack_start(GTK_BOX(trigger_hbox2), trg_y, TRUE, TRUE, 0);
 
+	// trigger X
+	//GtkObject *pos_t = gtk_adjustment_new(position_t, 0.0, 1.0, 0, 0, 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox2), gtk_label_new("X"), FALSE, FALSE, 0);
-	// position
-	GtkObject *pos_t = gtk_adjustment_new(position_t, 0.0, 1.0, 0, 0, 0);
-    GtkWidget *position_t = gtk_hscale_new(GTK_ADJUSTMENT(pos_t));
-	scale_configure(GTK_SCALE(position_t));
-	g_signal_connect(G_OBJECT(pos_t), "value_changed", G_CALLBACK(position_t_cb), 0);
-	gtk_box_pack_start(GTK_BOX(trigger_hbox2), position_t, TRUE, TRUE, 0);
+	adj_trg_x = gtk_adjustment_new(position_t, 0.0, 1.0, 0, 0, 0);
+    GtkWidget *trg_x = gtk_hscale_new(GTK_ADJUSTMENT(adj_trg_x));
+	scale_configure(GTK_SCALE(trg_x));
+	g_signal_connect(G_OBJECT(adj_trg_x), "value_changed", G_CALLBACK(position_t_cb), 0);
+	gtk_box_pack_start(GTK_BOX(trigger_hbox2), trg_x, TRUE, TRUE, 0);
 
 	gtk_box_pack_start(GTK_BOX(box2), trigger_frame, TRUE, TRUE, 0);
 	
+
+	// LOG WINDOW
+	GtkWidget *log_frame = gtk_frame_new("Log");
+	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+	log_buffer = gtk_text_buffer_new(NULL);
+	log_window = gtk_text_view_new_with_buffer(log_buffer);
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(log_window), TRUE);
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(log_window), TRUE);
+	gtk_container_add(GTK_CONTAINER(sw), log_window);
+	gtk_widget_set_size_request(log_window, 80, 80);
+	gtk_container_add(GTK_CONTAINER(log_frame), sw);
+	gtk_box_pack_start(GTK_BOX(box2), log_frame, TRUE, TRUE, 0);
+
+
+	// START/STOP BUTTON
 	start_button = gtk_button_new_with_label("Start");
 	g_signal_connect(GTK_OBJECT(start_button), "clicked", G_CALLBACK(start_pressed), 0);
 
@@ -887,6 +933,30 @@ void create_windows()
 	math_window = create_math_window(rx, ry + cw->allocation.height);
 }
 
+// write null-terminated string to the log window
+void message(const char *fmt, ...)
+{
+	char *str;
+	va_list ap;
+
+	va_start(ap, fmt);
+	g_vasprintf(&str, fmt, ap);
+	va_end(ap);
+
+	gtk_text_buffer_insert_at_cursor(log_buffer, str, -1);
+	gtk_text_view_place_cursor_onscreen(GTK_TEXT_VIEW(log_window));
+
+//	GtkTextIter iter;	
+//	gtk_text_buffer_get_end_iter(log_buffer, &iter);
+//	gtk_text_buffer_insert(log_buffer, &iter, str, -1);
+	g_free(str);
+	//gtk_text_buffer_get_end_iter(log_buffer, &iter);
+
+	GtkTextMark *mk = gtk_text_buffer_get_mark(log_buffer, "insert");
+	gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (log_window), mk, 0.0, FALSE, 0.0, 0.0);
+	//gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(log_window), &iter, 0.0, FALSE, 0, 0);
+}
+
 gint
 main(gint argc, char *argv[])
 {
@@ -933,6 +1003,8 @@ main(gint argc, char *argv[])
 	update_time_per_window();
 
 	trigger_position = COMPUTE_TRIGGER_POSITION(position_t);
+
+	message(APPNAME " " VERSION "\n" DSODA_URL "\n");
 
 	gtk_main ();
 

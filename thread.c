@@ -45,8 +45,9 @@ void myusleep(unsigned long usec)
 cb_fn my_cb = 0;
 
 void dso_thread_set_cb(cb_fn cb)
-{
-	my_cb = cb;
+{	// TODO: mutex
+	if(!my_cb)
+		my_cb = cb;
 }
 
 static

@@ -23,7 +23,11 @@ enum { CH_1 = 0, CH_2, CH_M };
 
 extern float nr_voltages[];
 extern int voltage_ch[3];
+extern int attenuation_ch[2];
 
 void gui_update_buffer_size(unsigned int buffer_size);
+void gui_set_trigger_position(float x, float y);
+
+void message(const char *, ...);
 
 #endif

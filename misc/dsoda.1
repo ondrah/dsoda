@@ -32,8 +32,7 @@ assign first position of current trigger
 .B right-click
 assign second position of current trigger
 
-As of this version, the cursor information is written to parent console window
-(stdout).
+Cursor information is written to the log of the control window.
 
 .SH Key Bindings
 .B c
@@ -48,8 +47,14 @@ switch interpolation mode (lines/points)
 .B h
 toggle high contrast screen
 
-.B l
-adjust line width
+.B l,L
+decrease/increase line width
+
+.B k,K
+decrease/increase miscellaneous line width
+
+.B t
+set trigger offset and position with next mouse-click
 
 .B escape
 center the graph, reset zoom, and clear the cursors

@@ -40,10 +40,12 @@
 #define GRID_COLOR	0xdd, 0xdd, 0xdd, 0x40
 #define AXIS_COLOR	0xff, 0xff, 0xff, 0x80
 
-static GdkCursor *cursor_cross, *cursor_hand;
+#define LINEWIDTH_MAX 5
+
+static GdkCursor *cursor_cross, *cursor_hand, *cursor_trigger;
 static GdkGLConfig *glconfig;
-static int gl_channels, gl_grid, gl_cursor, gl_trigger;
-static int fl_pan = 0, fl_pan_ready = 0, fl_xfactor = 0, fl_osd = 1;
+static int gl_channels, gl_grid, gl_cursor, gl_trigger, gl_osd;
+static int fl_pan = 0, fl_pan_ready = 0, fl_xfactor = 0, fl_osd = 1, fl_trigger = 0;
 static float zoom_factor = 1, pan_x = 0, pan_y = 0;
 static float press_x, press_y;
 static int x_factor = 1;
@@ -55,6 +57,7 @@ static int fl_grid = 1;
 
 static int fl_highcontrast = 0;
 static int line_width = 1;
+static int misc_line_width = 1;
 
 static int samples_in_grid = 10000;
 static float overlap = 0.5;
@@ -106,6 +109,7 @@ void gl_done()
 	glDeleteLists(gl_cursor, 2);
 	glDeleteLists(gl_trigger, 1);
 	glDeleteLists(gl_grid, 1);
+	glDeleteLists(gl_osd, 1);
 }
 
 static GLuint gl_makegrid();
@@ -124,6 +128,7 @@ void gl_init()
     gl_channels = glGenLists(3);
 	gl_cursor = glGenLists(2);
 	gl_trigger = glGenLists(1);
+	gl_osd = glGenLists(1);
     glShadeModel(GL_SMOOTH);
 	glLineStipple(1, 0xFF);
 }
@@ -166,8 +171,6 @@ void update_screen()
 		glEnd();
 		glEndList();
 	}
-
-	//glLineWidth(1);
 
 	if(fl_math) {
 		glNewList(gl_channels + 2, GL_COMPILE);
@@ -214,18 +217,18 @@ void update_screen()
 		// draw trigger offset + position
 		glNewList(gl_trigger, GL_COMPILE);
 		glColor4f(.3, .3, .8, 0.7);
-
-		glLineStipple(1, 0x1c47);
+		glLineWidth(misc_line_width);
+		glLineStipple(2, 0x1c47);
 		glEnable(GL_LINE_STIPPLE);
 
 		glBegin(GL_LINES);
 
 		glVertex2f((position_t - 0.5) * DIVS_H, -MV);
 		glVertex2f((position_t - 0.5) * DIVS_H, +MV);
-		glVertex2f(-DIVS_H/2, (offset_t - 0.5) * DIVS_V);
-		glVertex2f(+DIVS_H/2, (offset_t - 0.5) * DIVS_V);
+		glVertex2f(-MH, (offset_t - 0.5) * DIVS_V);
+		glVertex2f(+MH, (offset_t - 0.5) * DIVS_V);
 
-		glLineStipple(1, 0x0101);
+		glLineStipple(2, 0x0101);
 		if(capture_ch[0]) {
 			glColor4usv(channel_rgba[0]);
 			glVertex2f(-MH, (offset_ch[0] - 0.5) * DIVS_V);
@@ -260,6 +263,22 @@ void update_screen()
 	if(fl_grid) {
 		glCallList(gl_grid);
 		glCallList(gl_trigger);
+	}
+	if(fl_osd) {
+		// get back to no-zoom
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho((-DIVS_H/2 - MARGIN_CANVAS) , (DIVS_H/2 + MARGIN_CANVAS) , (-DIVS_V/2 - MARGIN_CANVAS) , (DIVS_V/2 + MARGIN_CANVAS) , -1.0, 1.0);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+
+		glCallList(gl_osd);
+
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho((-DIVS_H/2 - MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (DIVS_H/2 + MARGIN_CANVAS) * zoom_factor / x_factor + pan_x, (-DIVS_V/2 - MARGIN_CANVAS) * zoom_factor + pan_y, (DIVS_V/2 + MARGIN_CANVAS) * zoom_factor + pan_y, -1.0, 1.0);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
 	}
 	if(cursor_set[0])
 		glCallList(gl_cursor);
@@ -353,7 +372,7 @@ gboolean configure_event(GtkWidget *widget, GdkEventConfigure *event, gpointer d
   font_height = pango_font_metrics_get_ascent (font_metrics) +
                 pango_font_metrics_get_descent (font_metrics);
   font_height = PANGO_PIXELS (font_height) / 48.0;
-  g_print("%f\n", font_height);
+  //g_print("%f\n", font_height);
 
   pango_font_description_free (font_desc);
   pango_font_metrics_unref (font_metrics);
@@ -387,6 +406,13 @@ gboolean expose_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
 
 void display_refresh(GtkWidget *da)
 {
+	gdk_window_invalidate_rect(da->window, &da->allocation, FALSE);
+	gdk_window_process_updates(da->window, FALSE);
+}
+
+// refresh with frame limiter
+void display_refresh_fl(GtkWidget *da)
+{
 	static struct timeval otime = { .tv_sec = 0, .tv_usec = 0 };
 	struct timeval tv;
 
@@ -398,8 +424,7 @@ void display_refresh(GtkWidget *da)
 
 	otime = tv;
 
-	gdk_window_invalidate_rect(da->window, &da->allocation, FALSE);
-	gdk_window_process_updates(da->window, FALSE);
+	display_refresh(da);
 }
 
 int display_init(int *pargc, char ***pargv)
@@ -433,6 +458,15 @@ int display_init(int *pargc, char ***pargv)
 	return 0;
 }
 
+
+// return absolute position on the screen (even zoomed and panned)
+static
+void convert_abs_coords(float *dx, float *dy, GtkWidget *w, float cx, float cy)
+{
+	*dx = DIVS_H * (cx / w->allocation.width - 0.5) * (zoom_factor / x_factor) + pan_x;
+	*dy = -(DIVS_V * (cy / w->allocation.height - 0.5) * zoom_factor) + pan_y;
+}
+
 static
 void convert_coords(float *dx, float *dy, GtkWidget *w, float cx, float cy)
 {
@@ -444,12 +478,12 @@ static
 void cursor_genreport()
 {
 	float time_base = (float)samples_in_grid / DIVS_H * (1000000.0 / gui_get_sampling_rate());
-	float v = nr_voltages[voltage_ch[cursor_source]];
+	float v = nr_voltages[voltage_ch[cursor_source]] * attenuation_ch[cursor_source];
 	float o = (offset_ch[cursor_source] - 0.5) * DIVS_V;
 	float dx = (cursor[1].x - cursor[0].x) * time_base * zoom_factor / x_factor;
 	float dy = (cursor[1].y - cursor[0].y) * zoom_factor * v;
 	char *str_vu = "V";
-	char *str_hu = "usec";
+	char *str_hu = "us";
 	
 	if(cursor_set[0])
 		c_msg_len[0] = asprintf(&c_msg[0], "c0:  x = %.2f %s y = %.2f %s", cursor[0].x * zoom_factor / x_factor * time_base, str_hu, (cursor[0].y * zoom_factor - o) * v, str_vu);
@@ -481,12 +515,18 @@ void cursor_draw(int i)
 	glBegin(GL_LINES);
 	glVertex2f(-MH, ac->y * zoom_factor + pan_y);
 	glVertex2f(+MH, ac->y * zoom_factor + pan_y);
-
 	glEnd();
+
 	if(i == 1)
 		glDisable(GL_LINE_STIPPLE);
 
-	if(fl_osd) {
+	glEndList();
+
+	glNewList(gl_osd, GL_COMPILE);
+
+	glColor4us(channel_rgba[cursor_source][0], channel_rgba[cursor_source][1], channel_rgba[cursor_source][2], 0xEEEE);
+
+	//if(fl_osd) {
 		glListBase(font_list_base);
 		cursor_genreport();
 
@@ -499,7 +539,7 @@ void cursor_draw(int i)
 			glRasterPos2f(-DIVS_H/2, DIVS_V/2 - 0.2 - 2 * font_height);
 			glCallLists(d_msg_len, GL_UNSIGNED_BYTE, d_msg);
 		}
-	}
+	//}
 
 	glEndList();
 }
@@ -546,18 +586,27 @@ static
 void cursor_info()
 {
 	if(cursor_set[0])
-		g_print("%s\n", c_msg[0]);
+		message("%s\n", c_msg[0]);
 
 	if(cursor_set[1])
-		g_print("%s\n", c_msg[0]);
+		message("%s\n", c_msg[1]);
 
 	if(cursor_set[0] && cursor_set[1])
-		g_print("%s\n", d_msg);
+		message("%s\n", d_msg);
 }
 
 static
 gboolean mouse_button_press_cb(GtkWidget *w, GdkEventButton *e, gpointer p)
 {
+	if(e->button == 1 && fl_trigger) {
+		fl_trigger = 0;
+		float px, py;
+		gdk_window_set_cursor(w->window, cursor_cross);
+		convert_abs_coords(&px, &py, w, e->x, e->y);
+		gui_set_trigger_position(px / DIVS_H, py / DIVS_V);
+		return FALSE;
+	}
+
 	if(e->button == 1 && fl_pan_ready) {
 		fl_pan = 1;
 		convert_coords(&press_x, &press_y, w, e->x, e->y);
@@ -635,6 +684,24 @@ gboolean scroll_cb(GtkWidget *w, GdkEventScroll *e, gpointer p)
 }
 
 static
+void line_plus(int *lw)
+{
+	if(*lw == LINEWIDTH_MAX)
+		return;
+	(*lw)++;
+	display_refresh(my_window);
+}
+
+static
+void line_minus(int *lw)
+{
+	if(*lw == 1)
+		return;
+	(*lw)--;
+	display_refresh(my_window);
+}
+
+static
 gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 {
 	switch(e->keyval) {
@@ -653,9 +720,21 @@ gboolean key_press_cb(GtkWidget *w, GdkEventKey *e, gpointer p)
 				glClearColor(0,0,0,0);
 			display_refresh(my_window);
 			break;
-		case GDK_l:	// line width
-			line_width = (line_width % 5) + 1;
-			display_refresh(my_window);
+		case GDK_l:	// line width -
+			line_minus(&line_width);
+			break;
+		case GDK_L:	// line width +
+			line_plus(&line_width);
+			break;
+		case GDK_k:	// misc. lw--
+			line_minus(&misc_line_width);
+			break;
+		case GDK_K:	// misc. lw++
+			line_plus(&misc_line_width);
+			break;
+		case GDK_t:	// set trigger with mouse
+			fl_trigger = 1;
+			gdk_window_set_cursor(w->window, cursor_trigger);
 			break;
 		case GDK_i:
 			interpolation_type ^= 1;
@@ -746,6 +825,7 @@ GtkWidget *display_create_widget(GtkWidget *parent)
 
 	cursor_cross = gdk_cursor_new(GDK_CROSSHAIR);
 	cursor_hand = gdk_cursor_new(GDK_HAND1);
+	cursor_trigger = gdk_cursor_new(GDK_DRAPED_BOX);
 
 	return drawing_area;
 }
@@ -755,4 +835,5 @@ void display_done()
 	gl_done();
 //	gdk_cursor_unref(cursor_cross);
 //	gdk_cursor_unref(cursor_hand);
+//	gdk_cursor_unref(cursor_trigger);
 }

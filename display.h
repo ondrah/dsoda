@@ -17,5 +17,6 @@ int display_init(int *argc, char ***argv);
 void display_done();
 GtkWidget *display_create_widget(GtkWidget *parent);
 void display_refresh(GtkWidget *da);
+void display_refresh_fl(GtkWidget *da);
 
 #endif
