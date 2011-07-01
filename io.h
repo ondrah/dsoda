@@ -122,5 +122,6 @@ typedef void (*cb_fn)();
 void dso_thread_set_cb(cb_fn cb);
 
 extern float offset_ch[3], offset_t, position_t;
+extern int dso_revision;
 
 #endif

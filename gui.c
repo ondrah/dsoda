@@ -133,7 +133,7 @@ unsigned int gui_get_sampling_rate()
 static void
 scale_configure(GtkScale *scale)
 {
-	gtk_range_set_update_policy (GTK_RANGE (scale), GTK_UPDATE_CONTINUOUS);
+	//gtk_range_set_update_policy (GTK_RANGE (scale), GTK_UPDATE_CONTINUOUS);
     gtk_scale_set_digits (scale, 0);
     //gtk_scale_configure_pos (scale, GTK_POS_TOP);
     gtk_scale_set_draw_value (scale, FALSE);
@@ -176,7 +176,6 @@ void start_pressed()
 		update_offset();
 
 		dso_thread_resume();
-
 	} else {
 		DMSG("stopping capture\n");
 		fl_running = 0;
@@ -282,9 +281,9 @@ void math_cb(GtkWidget *w, int ch)
 {
 	fl_math = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w));
 	if(fl_math) {
-		gtk_widget_show_all(math_window);
+		gtk_widget_show(math_window);
 	} else {
-		gtk_widget_hide_all(math_window);
+		gtk_widget_hide(math_window);
 	}
 }
 
@@ -323,24 +322,24 @@ GtkWidget *create_channel_box(const char *name, int channel_id, GtkWidget *paren
 	gtk_box_pack_start(GTK_BOX(vb), hb, FALSE, FALSE, 0);
 
 	// voltage
-	GtkWidget *c_voltage = gtk_combo_box_new_text();
+	GtkWidget *c_voltage = gtk_combo_box_text_new();
 	for(int i=0;i<SCALAR(str_voltages);i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_voltage), i, str_voltages[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_voltage), i, str_voltages[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_voltage), voltage_ch[channel_id]);
 	g_signal_connect(G_OBJECT(c_voltage), "changed", G_CALLBACK(voltage_changed_cb), GINT_TO_POINTER(channel_id));
 
 	// attenuation
-	GtkWidget *c_attenuation = gtk_combo_box_new_text();
+	GtkWidget *c_attenuation = gtk_combo_box_text_new();
 	for(int i=0;i<SCALAR(str_attenuations);i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_attenuation), i, str_attenuations[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_attenuation), i, str_attenuations[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_attenuation), 0);
 	g_signal_connect(GTK_OBJECT(c_attenuation), "changed", G_CALLBACK (attenuation_cb), GINT_TO_POINTER(channel_id));
 
 	// coupling
-	GtkWidget *c_coupling= gtk_combo_box_new_text();
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 0, "AC");
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 1, "DC");
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(c_coupling), 2, "OFF");
+	GtkWidget *c_coupling = gtk_combo_box_text_new();
+	gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_coupling), 0, "AC");
+	gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_coupling), 1, "DC");
+	gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_coupling), 2, "OFF");
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_coupling), coupling_ch[channel_id]);
 	g_signal_connect(GTK_OBJECT(c_coupling), "changed", G_CALLBACK (coupling_cb), GINT_TO_POINTER(channel_id));
 	GtkWidget *c_color = gtk_color_button_new_with_color(&color_ch[channel_id]);
@@ -708,25 +707,25 @@ create_control_window(int x, int y)
 	gtk_box_pack_start(GTK_BOX(sf_vb), sf_hb2, FALSE, FALSE, 0);
 
 	// rate
-	set_srate = gtk_combo_box_new_text();
+	set_srate = gtk_combo_box_text_new();
 	for(int j = 0; j < SCALAR(str_sampling_rates); j++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_srate), j, str_sampling_rates[j]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(set_srate), j, str_sampling_rates[j]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(set_srate), sampling_rate_idx);
 	g_signal_connect(G_OBJECT(set_srate), "changed", G_CALLBACK (sampling_rate_cb), 0);
 	gtk_box_pack_start(GTK_BOX(sf_hb), set_srate, FALSE, FALSE, 0);
 
 	// buffer size
-	set_bsize = gtk_combo_box_new_text();
+	set_bsize = gtk_combo_box_text_new();
 	for(int j = 0; j < SCALAR(str_buffer_sizes); j++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(set_bsize), j, str_buffer_sizes[j]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(set_bsize), j, str_buffer_sizes[j]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(set_bsize), 0);
 	g_signal_connect(G_OBJECT(set_bsize), "changed", G_CALLBACK (buffer_size_cb), 0);
 	gtk_box_pack_start(GTK_BOX(sf_hb), set_bsize, FALSE, FALSE, 0);
 
 	// graph type
-	GtkWidget *c_graph = gtk_combo_box_new_text();
+	GtkWidget *c_graph = gtk_combo_box_text_new();
 	for(int i=0;i<SCALAR(str_graph_types);i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_graph), i, str_graph_types[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_graph), i, str_graph_types[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_graph), graph_type);
 	g_signal_connect(G_OBJECT(c_graph), "changed", G_CALLBACK(graph_type_cb), 0);
 	gtk_box_pack_start(GTK_BOX(sf_hb), c_graph, FALSE, FALSE, 0);
@@ -753,27 +752,27 @@ create_control_window(int x, int y)
 	gtk_box_pack_start(GTK_BOX(trigger_vbox), trigger_hbox2, FALSE, FALSE, 0);
 
 	// slope
-	GtkWidget *slope = gtk_combo_box_new_text();
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 0, "↗");
-	gtk_combo_box_insert_text(GTK_COMBO_BOX(slope), 1, "↘");
+	GtkWidget *slope = gtk_combo_box_text_new();
+	gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(slope), 0, "↗");
+	gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(slope), 1, "↘");
 	gtk_combo_box_set_active(GTK_COMBO_BOX(slope), trigger_slope);
 	g_signal_connect (G_OBJECT(slope), "changed", G_CALLBACK (trigger_slope_cb), 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox), slope, FALSE, FALSE, 0);
 
 	// source
-	GtkWidget *tsource = gtk_combo_box_new_text();
+	GtkWidget *tsource = gtk_combo_box_text_new();
 	char *str_tsources[] = {"ch1", "ch2", "alt", "ext", "ext/10"};
 	for(int i = 0; i < SCALAR(str_tsources); i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(tsource), i, str_tsources[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(tsource), i, str_tsources[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(tsource), trigger_source);
 	g_signal_connect (G_OBJECT(tsource), "changed", G_CALLBACK(trigger_source_cb), 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox), tsource, FALSE, FALSE, 0);
 
 	// mode
 	char *str_trigger_modes[] = {"Auto", "Normal", "Single"};
-	GtkWidget *c_trigger_mode = gtk_combo_box_new_text();
+	GtkWidget *c_trigger_mode = gtk_combo_box_text_new();
 	for(int i=0;i<SCALAR(str_trigger_modes);i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_trigger_mode), i, str_trigger_modes[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_trigger_mode), i, str_trigger_modes[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_trigger_mode), dso_trigger_mode);
 	g_signal_connect(G_OBJECT(c_trigger_mode), "changed", G_CALLBACK(trigger_mode_cb), 0);
 	gtk_box_pack_start(GTK_BOX(trigger_hbox), c_trigger_mode, FALSE, FALSE, 0);
@@ -876,25 +875,25 @@ GtkWidget *create_math_window(int x, int y)
 	GtkWidget *c_src[2];
 	
 	// voltage
-	GtkWidget *c_voltage = gtk_combo_box_new_text();
+	GtkWidget *c_voltage = gtk_combo_box_text_new();
 	for(int i=0;i<SCALAR(str_voltages);i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_voltage), i, str_voltages[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_voltage), i, str_voltages[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_voltage), voltage_ch[2]);
 	g_signal_connect(G_OBJECT(c_voltage), "changed", G_CALLBACK(voltage_changed_cb), GINT_TO_POINTER(2));
 
 	for(int i = 0; i < 2; i++) {
-		c_src[i] = gtk_combo_box_new_text();
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_src[i]), 0, "CH1");
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_src[i]), 1, "CH2");
+		c_src[i] = gtk_combo_box_text_new();
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_src[i]), 0, "CH1");
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_src[i]), 1, "CH2");
 		gtk_combo_box_set_active(GTK_COMBO_BOX(c_src[i]), i);
 		g_signal_connect(G_OBJECT(c_src[i]), "changed", G_CALLBACK(math_source_cb), GINT_TO_POINTER(i));
 	}
 
 	char *fn[] = {"+", "-", "·", /*"/"*/};
 
-	GtkWidget *c_op = gtk_combo_box_new_text();
+	GtkWidget *c_op = gtk_combo_box_text_new();
 	for(int i = 0; i < SCALAR(fn); i++)
-		gtk_combo_box_insert_text(GTK_COMBO_BOX(c_op), i, fn[i]);
+		gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(c_op), i, fn[i]);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(c_op), 0);
 	g_signal_connect(G_OBJECT(c_op), "changed", G_CALLBACK(math_op_cb), 0);
 	
@@ -993,18 +992,23 @@ main(gint argc, char *argv[])
 
 	}
 
+
 	update_offset();
 	
 	if(dso_initialized)
 		dso_thread_init();
 
 	create_windows();
+	message(APPNAME " " VERSION "\n" DSODA_URL "\n");
+	if(dso_initialized) {
+		message("dso revision=%d\n", dso_revision);
+	} else {
+		message("dso failed to initialize\n");
+	}
 
 	update_time_per_window();
 
 	trigger_position = COMPUTE_TRIGGER_POSITION(position_t);
-
-	message(APPNAME " " VERSION "\n" DSODA_URL "\n");
 
 	gtk_main ();
 

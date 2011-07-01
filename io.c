@@ -151,6 +151,9 @@ struct usb_dev_handle *dso_prepare()
 	return 0;
 }
 
+static int dso_get_revision(int *r);
+int dso_revision;
+
 int dso_init()
 {
 	if(!(udh = dso_prepare())) {
@@ -158,7 +161,11 @@ int dso_init()
 		return -1;
 	}
 
-	DMSG("DSO found\n");
+	if(dso_get_revision(&dso_revision) < 0) {
+		DMSG("Revision not determined");
+		return -1;
+	}
+	DMSG("DSO found, rev=%d\n", dso_revision);
 	dso_initialized = 1;
 	return 0;
 }
@@ -445,6 +452,18 @@ int dso_get_offsets(struct offset_ranges *or)
 	int r = dso_read_control(C_COMMAND, or, sizeof(*or), 0x08, 0);
 	dso_unlock();
 
+	FAIL_HANDLER(r);
+}
+
+static
+int dso_get_revision(int *rev)
+{
+	dso_lock();
+	unsigned char b;
+	int r = dso_read_control(C_COMMAND, &b, 1, 0x60, 0);
+	dso_unlock();
+
+	*rev = b;
 	FAIL_HANDLER(r);
 }
 

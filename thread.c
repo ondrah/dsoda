@@ -106,7 +106,8 @@ void *dso_thread(void *ptr)
 					myusleep(dso_period_usec >> 1);
 					break;
 
-				case 2: // full
+				case 2: // full, (rev 0)
+				case 3:	// some dso's send 3 instead of 2 (rev 2)
 					pthread_mutex_lock(&buffer_mutex);
 					if (dso_get_channel_data(dso_buffer, dso_buffer_size) < 0) {
 						DMSG("Error in command GetChannelData\n");
